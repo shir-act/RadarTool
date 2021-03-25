@@ -149,8 +149,8 @@ class MainWindow(QMainWindow):
         self.TPCfg = dict(self.RPCfg)
 
 #-------define standard TxChn and TxPwr-------#
-        self.TxChn = 1
-        self.TxPwr = 61
+        self.TxChn = 4
+        self.TxPwr = 63
 
 #-------start GUI-Creation-------#
         self.start_gui()
@@ -888,18 +888,12 @@ class MainWindow(QMainWindow):
 
 #-------create Scaling-Data-Container: Range-------#
         self.JRan = self.Proc.GetBeamformingUla("Range")
-        lRan = len(self.JRan)
-        self.ARan = np.zeros(lRan)
-        self.ARan[:lRan] = self.JRan
-        self.ARan[-1] = np.ediff1d(self.JRan)[-1] + self.JRan[-1]
+        self.ARan = np.append(self.JRan, self.BFCfg["RMax"])
 
 #-------create Scaling-Data-Container: Angle-------#
         self.JAng = self.Proc.GetBeamformingUla("AngFreqNorm")
-        lAng = len(self.JAng)
-        self.JAng = np.arange(int(lAng/2)*-1, int(lAng/2))
-        self.AAng = np.zeros(lAng)
-        self.AAng[:lAng] = self.JAng
-        self.AAng[-1] = np.ediff1d(self.JAng)[-1] + self.JAng[-1]
+        self.AAng = np.append(self.JAng, (self.JAng[0]*-1))
+        self.AAng = np.rad2deg(self.AAng)
 
 #-------create Plot-------#
         self.plt = self.figure.add_subplot(111)
@@ -1037,7 +1031,7 @@ class MainWindow(QMainWindow):
 
 #-------enable Rx and Tx-------#
         self.Board.RfRxEna()
-        self.Board.RfTxEna(2, 63)
+        self.Board.RfTxEna(self.TxChn, self.TxPwr)
 
 #-------set Board-Config-------#
         self.Board.Set("NrChn", 1)
@@ -1068,17 +1062,11 @@ class MainWindow(QMainWindow):
 
 #-------create Scaling-Data-Container: Range-------#
         self.JRan = self.Proc.GetRangeDoppler("Range")
-        lRan = len(self.JRan)
-        self.ARan = np.zeros(lRan)
-        self.ARan[:lRan] = self.JRan
-        self.ARan[-1] = np.ediff1d(self.JRan)[-1] + self.JRan[-1]
+        self.ARan = np.append(self.JRan, self.RDCfg["RMax"])
 
 #-------create Scaling-Data-Container: Velocity-------#
         self.JVel = self.Proc.GetRangeDoppler("Vel")
-        lVel = len(self.JVel)
-        self.AVel = np.zeros(lVel)
-        self.AVel[:lVel] = self.JVel
-        self.AVel[-1] = np.ediff1d(self.JVel)[-1] + self.JVel[-1]
+        self.AVel = np.append(self.JVel, (self.JVel[0]*-1))
 
 #-------add info to maxtab--------#
         self.MaxTab.clearContents()
@@ -1116,8 +1104,8 @@ class MainWindow(QMainWindow):
                 self.RDNorm = RD
 
 #-----------plot values-----------#
-            self.plt.pcolormesh(self.AVel, self.ARan, self.RDNorm, shading="auto")
-            self.plt.set_xlabel("Velocity [deg/sec]")
+            self.plt.pcolormesh(self.AVel, self.ARan, self.RDNorm)
+            self.plt.set_xlabel("Velocity [m/s]")
             self.plt.set_ylabel("Range [m]")
             self.plt.set_ylim(self.RDCfg["RMin"], self.RDCfg["RMax"])
             self.canvas.draw()
@@ -1193,7 +1181,7 @@ class MainWindow(QMainWindow):
 
 #-------enable Rx and Tx-------#
         self.Board.RfRxEna()
-        self.Board.RfTxEna(2, 63)
+        self.Board.RfTxEna(self.TxChn, self.TxPwr)
 
 #-------set BoardConfig-------#
         self.Board.RfMeas("ExtTrigUp_TxSeq", self.BCfg)
@@ -1251,35 +1239,35 @@ class MainWindow(QMainWindow):
             elif Id == 4:
                 self.MeasData[:, 24:32] = Data
 
-#-----------get RangeProfile of measured Data-----------#
-            self.RP = self.Proc.RangeProfile(self.MeasData)
+#---------------get RangeProfile of measured Data---------------#
+                self.RP = self.Proc.RangeProfile(self.MeasData)
 
-            if self.CheckNorm.checkState():
-                self.RP = pd.DataFrame(self.RP)
-                self.RP = self.RP.mean(axis=1)
-                self.NormVal = self.NormBox.value()
-                self.RP.loc[self.RP < self.NormVal] = self.NormVal
+                if self.CheckNorm.checkState():
+                    self.RP = pd.DataFrame(self.RP)
+                    self.RP = self.RP.mean(axis=1)
+                    self.NormVal = self.NormBox.value()
+                    self.RP.loc[self.RP < self.NormVal] = self.NormVal
 
 
-#-----------draw plot-----------#
-            self.plt.plot([-10, 100], [np.amax(self.RP), np.amax(self.RP)])
-            self.plt.plot(self.RanSca, self.RP)
-            self.plt.set_xlabel("Range [m]")
-            self.plt.set_ylabel("dB")
-            self.plt.set_ylim(-200, 0)
-            self.plt.set_xlim(self.RPCfg["RMin"], self.RPCfg["RMax"])
-            self.canvas.draw()
-            self.figure.savefig("vc/RP_"+str(MeasIdx)+".png")
+#---------------draw plot---------------#
+                self.plt.plot([-10, 100], [np.amax(self.RP), np.amax(self.RP)])
+                self.plt.plot(self.RanSca, self.RP)
+                self.plt.set_xlabel("Range [m]")
+                self.plt.set_ylabel("dB")
+                self.plt.set_ylim(-200, 0)
+                self.plt.set_xlim(self.RPCfg["RMin"], self.RPCfg["RMax"])
+                self.canvas.draw()
+                self.figure.savefig("vc/RP_"+str(MeasIdx)+".png")
 
-#-----------MaxTab update-----------#
-            delta = ttime.time() - start
-            self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
-            self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem(str(delta)[:-3]))
-            self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(MeasIdx)))
-            self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem(str(np.amax(self.RP))))
+#---------------MaxTab update---------------#
+                delta = ttime.time() - start
+                self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+                self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem(str(delta)[:-3]))
+                self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(MeasIdx)))
+                self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem(str(np.amax(self.RP))))
 
-#-----------process Events-----------#
-            QApplication.processEvents()
+#---------------process Events---------------#
+                QApplication.processEvents()
 
 #-----------check for cancel-commands-----------#
             if self.cancel:
@@ -2009,18 +1997,18 @@ class MainWindow(QMainWindow):
         self.ScrLay.addWidget(self.Dspl_Dstnc)
         self.ScrLay.addWidget(self.Dspl_RMax)
         self.ScrLay.addWidget(self.Dspl_RMin)
-        self.ScrLay.addWidget(self.Dspl_Chnnls2)
-        self.ScrLay.addWidget(self.Dspl_ChnOrder)
+        # self.ScrLay.addWidget(self.Dspl_Chnnls2)
+        # self.ScrLay.addWidget(self.Dspl_ChnOrder)
         self.ScrLay.addWidget(self.Dspl_RD_tl)
-        self.ScrLay.addWidget(self.Dspl_Frqncy1)
-        self.ScrLay.addWidget(self.Dspl_RDfc)
-        self.ScrLay.addWidget(self.Dspl_Drtn1)
-        self.ScrLay.addWidget(self.Dspl_RDTp)
+        # self.ScrLay.addWidget(self.Dspl_Frqncy1)
+        # self.ScrLay.addWidget(self.Dspl_RDfc)
+        # self.ScrLay.addWidget(self.Dspl_Drtn1)
+        # self.ScrLay.addWidget(self.Dspl_RDTp)
         self.ScrLay.addWidget(self.Dspl_Cnstnt3)
         self.ScrLay.addWidget(self.Dspl_RDRangeFFT)
         self.ScrLay.addWidget(self.Dspl_RDVelFFT)
-        self.ScrLay.addWidget(self.Dspl_RDN)
-        self.ScrLay.addWidget(self.Dspl_RDNp)
+        # self.ScrLay.addWidget(self.Dspl_RDN)
+        # self.ScrLay.addWidget(self.Dspl_RDNp)
         self.ScrLay.addWidget(self.Dspl_RDAbs)
         self.ScrLay.addWidget(self.Dspl_RDExt)
         self.ScrLay.addWidget(self.Dspl_RDRemoveMean)
@@ -3304,7 +3292,7 @@ class MainWindow(QMainWindow):
                         raise LookupError
 
                 elif showMe == "NIni":
-                    if int(value) in range(0, self.BCfg["N"]):
+                    if int(value) in range(0, int(self.BCfg["N"])):
                         self.TPCfg["NIni"] = float(value)
                     else:
                         raise LookupError
