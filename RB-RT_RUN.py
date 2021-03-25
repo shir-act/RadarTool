@@ -1,7 +1,7 @@
 import sys
 from socket import gethostbyaddr, herror
-from src.cmd_modules.Mimo77L import Mimo77L
-import src.cmd_modules.RadarProc as RadarProc
+from Mimo77L import Mimo77L
+import RadarProc
 import matplotlib as mpl
 from matplotlib import figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FCA
@@ -11,10 +11,9 @@ from PyQt5.Qt import Qt
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, QPushButton, QLineEdit, QMessageBox, QAction,
                              QMenu, QRadioButton, QButtonGroup, QGridLayout, QLabel, QListWidget, QScrollArea,
                              QVBoxLayout, QComboBox, QFileDialog, QDoubleSpinBox, QCheckBox, QSlider, QSpinBox,
-                             QTableWidget, QTableWidgetItem)
+                             QTableWidget, QTableWidgetItem, QHeaderView)
 import numpy as np
 import pandas as pd
-import cv2
 import imageio
 import os
 import glob
@@ -33,7 +32,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
 
 #-------Define RadarTool version-------#
-        self.version = "v0.1.0"
+        self.version = "v0.1.2"
 
 #-------Define standard RadarBook-IP-------#
         self.IP_Brd = "192.168.1.1"
@@ -68,16 +67,15 @@ class MainWindow(QMainWindow):
         self.StdCfg["TRampUp"] = 25.6e-6
         self.StdCfg["TRampDo"] = 1e-6
         self.StdCfg["TInt"] = 1000e-3
-        self.StdCfg["Tp"] = 126.6e-6
+        self.StdCfg["Tp"] = 150e-6
         self.StdCfg["N"] = 504
         self.StdCfg["Np"] = 4
-        self.StdCfg["NrFrms"] = 1000
+        self.StdCfg["NrFrms"] = 100
         self.StdCfg["TxSeq"] = np.array([1, 2, 3, 4])
         self.StdCfg["IniEve"] = 1
-        self.StdCfg["IniTim"] = 2e-3
-        self.StdCfg["CfgTim"] = 30e-6
+        self.StdCfg["IniTim"] = 5e-3
+        self.StdCfg["CfgTim"] = 50e-6
         self.StdCfg["ExtEve"] = 0
-        self.StdCfg["Start"] = None
 
         self.BCfg = dict(self.StdCfg)
         self.TCfg = dict(self.BCfg)
@@ -125,6 +123,7 @@ class MainWindow(QMainWindow):
         self.SRCfg["fc"] = (self.BCfg["fStrt"] + self.BCfg["fStop"]) / 2
         self.SRCfg["Tp"] = self.BCfg["Tp"]
         self.SRCfg["ThresdB"] = 0
+        self.SRCfg["NIni"] = 1
 
         self.RDCfg = dict(self.SRCfg)
         self.TRCfg = dict(self.RDCfg)
@@ -144,6 +143,7 @@ class MainWindow(QMainWindow):
         self.SPCfg["XPos"] = 1
         self.SPCfg["dB"] = 1
         self.SPCfg["FuSca"] = 2/2048
+        self.SPCfg["NIni"] = 1
 
         self.RPCfg = dict(self.SPCfg)
         self.TPCfg = dict(self.RPCfg)
@@ -265,10 +265,13 @@ class MainWindow(QMainWindow):
 
 #-------Create a TableWidget to show max values-------#
         self.MaxTab = QTableWidget()
+        self.MaxTab.setFixedWidth(480)
         self.MaxTab.setColumnCount(3)
         self.MaxTab.setHorizontalHeaderItem(0, QTableWidgetItem("Measurement/Time:"))
         self.MaxTab.setHorizontalHeaderItem(1, QTableWidgetItem("SequenceRepeat [NrFrms]:"))
         self.MaxTab.setHorizontalHeaderItem(2, QTableWidgetItem("max. Value [dbV]"))
+        header = self.MaxTab.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
 
 #-------Create and fill up menubar-------#
         self.mnbr = self.menuBar()
@@ -447,6 +450,7 @@ class MainWindow(QMainWindow):
             self.connected = False
 #-------close RadarBook-Radartool.exe and quit QApplication-------#
         self.close()
+        self.endloop = True
         app = QApplication(sys.argv)
         app.closeAllWindows()
         app.quit()
@@ -701,6 +705,11 @@ class MainWindow(QMainWindow):
         self.figure.clear()
         self.canvas.draw()
 
+#---clear videocache function---#
+    def VC_CLR(self):
+        for image in glob.glob("vc/*.png"):
+            os.remove(image)
+
 #---Board-info-function---#
     def BRD_INFO(self):
 #-------get BoardInfo-------#
@@ -828,6 +837,9 @@ class MainWindow(QMainWindow):
             self.errmsg("ValueError!", "The connected Board has no Power!\nPlease activate the Power first!", "w")
             return
 
+#-------clear vc-------#
+        self.VC_CLR()
+
 #-------enable cancel-button-------#
         self.Brd_Ccl.setEnabled(True)
 
@@ -894,7 +906,7 @@ class MainWindow(QMainWindow):
 
 #-------maxtab update-------#
         self.MaxTab.clearContents()
-        self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+        self.MaxTab.setRowCount(1)
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem("FMCW"))
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(self.BCfg["NrFrms"])))
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem("<-- total"))
@@ -1004,6 +1016,9 @@ class MainWindow(QMainWindow):
             self.errmsg("ValueError!", "The connected Board has no Power!\nPlease activate the Power first!", "w")
             return
 
+#-------clear vc-------#
+        self.VC_CLR()
+
 #-------enable cancel-button-------#
         self.Brd_Ccl.setEnabled(True)
 
@@ -1067,7 +1082,7 @@ class MainWindow(QMainWindow):
 
 #-------add info to maxtab--------#
         self.MaxTab.clearContents()
-        self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+        self.MaxTab.setRowCount(1)
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem("RangeDoppler"))
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(self.BCfg["NrFrms"])))
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem("<-- total"))
@@ -1101,7 +1116,7 @@ class MainWindow(QMainWindow):
                 self.RDNorm = RD
 
 #-----------plot values-----------#
-            self.plt.pcolormesh(self.AVel, self.ARan, self.RDNorm)
+            self.plt.pcolormesh(self.AVel, self.ARan, self.RDNorm, shading="auto")
             self.plt.set_xlabel("Velocity [deg/sec]")
             self.plt.set_ylabel("Range [m]")
             self.plt.set_ylim(self.RDCfg["RMin"], self.RDCfg["RMax"])
@@ -1159,6 +1174,9 @@ class MainWindow(QMainWindow):
             self.errmsg("ValueError!", "The connected Board has no Power yet!\nPlease activate the Power first!", "w")
             return
 
+#-------clear vc-------#
+        self.VC_CLR()
+
 #-------enable cancel button-------#
         self.Brd_Ccl.setEnabled(True)
 
@@ -1209,7 +1227,7 @@ class MainWindow(QMainWindow):
 
 #-------add info to maxtab--------#
         self.MaxTab.clearContents()
-        self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+        self.MaxTab.setRowCount(1)
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem("RangeProfile"))
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(self.BCfg["NrFrms"])))
         self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem("<-- total"))
@@ -1297,8 +1315,7 @@ class MainWindow(QMainWindow):
         if Qstn == 0:
             self.REPORT()
         else:
-            for image in glob.glob("vc/*.png"):
-                os.remove(image)
+            pass
 
 #---Configmenu function---#
     def BRD_CFG(self):
@@ -1312,7 +1329,7 @@ class MainWindow(QMainWindow):
 #-------Add the some names to the list-------#
         Opts = ["fStrt", "fStop", "TRampUp", "TRampDo", "Np",
                 "N", "NrFrms", "Tp", "TInt", "TxSeq", "IniEve",
-                "IniTim", "CfgTim", "ExtEve", "Start"]
+                "IniTim", "CfgTim", "ExtEve"]
         self.Cfg_Lst.addItems(Opts)
         self.Cfg_Lst.currentItemChanged.connect(self.BRD_CFG_UPDATE)
 
@@ -1415,11 +1432,11 @@ class MainWindow(QMainWindow):
             self.Cfg_Ttl.setText("Duration Start2Stop - linear-RampUpwards")
             self.Cfg_Var.setText("Variable Name:\nTRampUp")
             original = str(self.StdCfg["TRampUp"])
-            self.Cfg_Orig.setText("Original Value:\n"+original+" [ms]")
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [s]")
             self.Cfg_Conv.setText("Converter: Ready!")
             self.Cfg_Exp.setText("This variable describes the time needed to make a linear jump from Start- to Stop-Frequency!\n"
                                  "The time needed for the so called Up-Ramp should be a little higher than the time needed for the Down-Ramp.\n"
-                                 "The numeric value of this variable should be around 20-50 ms!")
+                                 "The numeric value of this variable should be around 20-50 µs!")
             self.Cfg_New.setText(str(self.TCfg["TRampUp"]))
             self.Cfg_Pic.setPixmap(QtGui.QPixmap("pics/Cfg.png"))
 
@@ -1427,11 +1444,11 @@ class MainWindow(QMainWindow):
             self.Cfg_Ttl.setText("Duration Stop2Start - linear-RampDownwards")
             self.Cfg_Var.setText("Variable Name:\nTRampDo")
             original = str(self.StdCfg["TRampDo"])
-            self.Cfg_Orig.setText("Original Value:\n"+original+" [ms]")
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [s]")
             self.Cfg_Conv.setText("Converter: Ready!")
             self.Cfg_Exp.setText("This variable describes the time needed to make a linear drop from Stop- to StartFrequency!\n"
                                  "The time needed for the so called Down-Ramp should be a little less than the time needed for the Up-Ramp.\n"
-                                 "The numeric value of this variableshould be around 1-10 ms!")
+                                 "The numeric value of this variableshould be around 1-10 µs!")
             self.Cfg_New.setText(str(self.TCfg["TRampDo"]))
             self.Cfg_Pic.setPixmap(QtGui.QPixmap("pics/Cfg.png"))
 
@@ -1473,7 +1490,7 @@ class MainWindow(QMainWindow):
             self.Cfg_Ttl.setText("Time for Sequence - Wait-Time")
             self.Cfg_Var.setText("Variable Name:\nTp")
             original = str(self.StdCfg["Tp"])
-            self.Cfg_Orig.setText("Original Value:\n"+original+" [ms]")
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [s]")
             self.Cfg_Conv.setText("Converter: Ready!")
             self.Cfg_Exp.setText("This is the time that passes after every single Tx-Sequence (TRampUp -> TRampDo -> Tp -> TRampUp...) has finished."
                                  "\nThe RadarBook itself needs about 30µs to set the Config.To ensure this, here is the calculation:\n"
@@ -1487,7 +1504,7 @@ class MainWindow(QMainWindow):
             self.Cfg_Ttl.setText("Time Between Sequences - Wait-Time")
             self.Cfg_Var.setText("Variable Name:\nTInt")
             original = str(self.StdCfg["TInt"])
-            self.Cfg_Orig.setText("Original Value:\n"+original+" [ms]")
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [s]")
             self.Cfg_Conv.setText("Converter: Ready!")
             self.Cfg_Exp.setText("This is the time that passes for every Sequence-Order (Tx1-Tx2-Tx3-Tx4). There is even a way to calc. TInt!\n"
                                  "The variable 'WaitTime' describes the total time when no signals are transmitted. When using simple math this can be done:\n"
@@ -1515,14 +1532,15 @@ class MainWindow(QMainWindow):
             original = str(self.StdCfg["IniEve"])
             self.Cfg_Orig.setText("Original Value:\n"+original+" [event]")
             self.Cfg_Conv.setText("No Conversion!")
-            self.Cfg_Exp.setText("Defining a start-event may be helpful for other measurements!")
+            self.Cfg_Exp.setText("Enable or disable trigger event after start-phase. If set to 0 SeqTrigExtEve will start the measurement.\n"
+                                 "If set to 1 the measurement will start automatically!")
             self.Cfg_New.setText(str(self.TCfg["IniEve"]))
 
         elif showMe == "IniTim":
             self.Cfg_Ttl.setText("InitTimeWindow - Time for init")
             self.Cfg_Var.setText("Variable Name:\n" + showMe)
             original = str(self.StdCfg["IniTim"])
-            self.Cfg_Orig.setText("Original Value:\n"+original+" [ms]")
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [s]")
             self.Cfg_Conv.setText("Converter: Ready!")
             self.Cfg_Exp.setText("The total timewindow for init-phase - if this value gets higher you should consider setting a delay.\n"
                                  "This way measurement and init dont overlap!")
@@ -1532,7 +1550,7 @@ class MainWindow(QMainWindow):
             self.Cfg_Ttl.setText("Re-Config-Time of PLL")
             self.Cfg_Var.setText("Variable Name:\n" + showMe)
             original = str(self.StdCfg["CfgTim"])
-            self.Cfg_Orig.setText("Original Value:\n"+original+" [ms]")
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [s]")
             self.Cfg_Conv.setText("Converter: Ready!")
             self.Cfg_Exp.setText("The CfgTim defines the time that passes while the Config is set after every chirp. This variable is connected with Tp!\n"
                                  "CfgTim = Tp - (TRampUp + TRampDo)\ncalculated CfgTim: " + str(self.TCfg["Tp"] - (self.TCfg["TRampUp"] + self.TCfg["TRampDo"])))
@@ -1544,18 +1562,9 @@ class MainWindow(QMainWindow):
             original = str(self.StdCfg["ExtEve"])
             self.Cfg_Orig.setText("Original Value:\n"+original+" [event]")
             self.Cfg_Conv.setText("No Conversion!")
-            self.Cfg_Exp.setText("If set to 1, this means Measurement stops after every Sequence until a external Event is triggered.\n"
+            self.Cfg_Exp.setText("If set to 1, this means Measurement stops after every Sequence until a external Event (SeqTrigExtEve) is triggered.\n"
                                  "After triggering this Event the next Sequence ('Np'x'TxSeq') is started!")
             self.Cfg_New.setText(str(self.TCfg["ExtEve"]))
-
-        elif showMe == "Start":
-            self.Cfg_Ttl.setText("Start/Stop FPGA-Timing")
-            self.Cfg_Var.setText("Variable Name:\n" + showMe)
-            original = str(self.StdCfg["Start"])
-            self.Cfg_Orig.setText("Original Value:\n"+original+" [bool]")
-            self.Cfg_Conv.setText("No Conversion!")
-            self.Cfg_Exp.setText("unknown yet!")
-            self.Cfg_New.setText(str(self.TCfg["Start"]))
 
         else:
             self.errmsg("NameError!", "Item '" + showMe + "' not found!", "c")
@@ -1592,7 +1601,7 @@ class MainWindow(QMainWindow):
 
                 elif showMe in ["TRampUp", "TRampDo", "Tp", "TInt", "CfgTim", "IniTim"]:
                     new_value = str(float(value) * 1e3)
-                    self.Cfg_Conv.setText("Converted Value:\n"+new_value+" [µs]")
+                    self.Cfg_Conv.setText("Converted Value:\n"+new_value+" [ms]")
                     if showMe == "TRampUp":
                         if float(value) > 0:
                             self.TCfg["TRampUp"] = float(value)
@@ -1624,7 +1633,7 @@ class MainWindow(QMainWindow):
                         else:
                             raise LookupError
 
-                elif showMe in ["NrFrms", "N", "Np", "IniEve", "ExtEve", "Start"]:
+                elif showMe in ["NrFrms", "N", "Np", "IniEve", "ExtEve"]:
                     if showMe == "NrFrms":
                         if float(value) >= 1:
                             self.TCfg["NrFrms"] = float(value)
@@ -1650,8 +1659,6 @@ class MainWindow(QMainWindow):
                             self.TCfg["ExtEve"] = float(value)
                         else:
                             raise LookupError
-                    elif showMe == "Start":
-                        self.TCfg["Start"] = float(value)
 
                 else:
                     raise ValueError
@@ -1746,6 +1753,7 @@ class MainWindow(QMainWindow):
         if cont:
             self.BCfg = dict(self.TCfg)
             self.errmsg("Confirmed!", "Config saved successfully!", "i")
+            self.Cfg_Wndw.close()
         else:
             self.errmsg("Config not set!", "The User-Config is not set, but still saved in the ConfigWindow.", "i")
 
@@ -1779,6 +1787,7 @@ class MainWindow(QMainWindow):
         self.MaxTab.hide()
 #-------Create a ScollArea and add Displays to it-------#
         self.Display = QWidget()
+        self.Display.setFixedWidth(480)
 
         self.DspLay = QVBoxLayout()
 
@@ -2175,7 +2184,7 @@ class MainWindow(QMainWindow):
         self.PS_Wndw = QWidget()
 
 #-------create a small layout-------#
-        self.PS_Layout = QVBoxLayout()
+        self.PS_Layout = QGridLayout()
 
 #-------create Combobox with Presets-------#
         self.PS_CB = QComboBox()
@@ -2189,8 +2198,8 @@ class MainWindow(QMainWindow):
         self.PS_PshBtn.setFixedWidth(50)
 
 #-------fill layout and define Window-------#
-        self.PS_Layout.addWidget(self.PS_CB, Qt.AlignCenter|Qt.AlignTop)
-        self.PS_Layout.addWidget(self.PS_PshBtn, Qt.AlignRight|Qt.AlignBottom)
+        self.PS_Layout.addWidget(self.PS_CB, 0, 0, 1, 2)
+        self.PS_Layout.addWidget(self.PS_PshBtn, 1, 1, 1, 1)
 
         self.PS_Wndw.setLayout(self.PS_Layout)
         self.PS_Wndw.resize(256, 128)
@@ -2382,7 +2391,8 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["Abs"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [bool]")
             self.Bmf_Conv.setText("Converter: Ready!")
-            self.Bmf_Exp.setText("Choose if the absolut values should be used or not!")
+            self.Bmf_Exp.setText("Choose if the absolut values should be used or not!\n"
+                                 "This means that the total diffrence is taken. e.g.: abs(6) = 6; abs(-6) = 6")
             self.Bmf_New.setText(str(self.TBCfg["Abs"]))
 
         elif showMe == "Ext":
@@ -2391,7 +2401,7 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["Ext"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [bool]")
             self.Bmf_Conv.setText("Converter: Ready")
-            self.Bmf_Exp.setText("Choose if you want to take RMin and RMax into account!")
+            self.Bmf_Exp.setText("Choose if you want to take RMin and RMax into account! If set to 0 no Range Interval will get extracted!")
             self.Bmf_New.setText(str(self.TBCfg["Ext"]))
 
         elif showMe == "RMin":
@@ -2400,7 +2410,8 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["RMin"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [m]")
             self.Bmf_Conv.setText("Converter: Ready!")
-            self.Bmf_Exp.setText("Defines the minimum Range. Everything in front of this point will get ignored.\nUse this Variable to Scale the y-axis of the plot!")
+            self.Bmf_Exp.setText("Defines the minimum Range. Everything in front of this point will get ignored.\nUse this Variable to Scale the y-axis of the plot! "
+                                 "This only works if Extract Range Interval is true! -> Ext: " + str(bool(self.TBCfg["Ext"])))
             self.Bmf_New.setText(str(self.TBCfg["RMin"]))
 
         elif showMe == "RMax":
@@ -2409,7 +2420,8 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["RMax"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [m]")
             self.Bmf_Conv.setText("Converter: Ready!")
-            self.Bmf_Exp.setText("Defines the maximum Range. Everything behind this point will get ignored. Use this Variable to Scale the y-axis of the plot!")
+            self.Bmf_Exp.setText("Defines the maximum Range. Everything behind this point will get ignored.\nUse this Variable to Scale the y-axis of the plot! "
+                                 "This only works if Extract Range Interval is true! -> Ext: " + str(bool(self.TBCfg["Ext"])))
             self.Bmf_New.setText(str(self.TBCfg["RMax"]))
 
         elif showMe == "ChnOrder":
@@ -2426,7 +2438,8 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["NIni"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [const]")
             self.Bmf_Conv.setText("No Conversion!")
-            self.Bmf_Exp.setText("This variable defines how many samples are left ignored at the Start of a MeasData-array e.g.")
+            self.Bmf_Exp.setText("This is the number of samples that gets ignored when passing BeamformingUla a Measurement-Frame.\n"
+                                 "Originally this value is 1 because the first line of a Measurement-Frame is allways the Channel!")
             self.Bmf_New.setText(str(self.TBCfg["NIni"]))
 
         elif showMe == "RemoveMean":
@@ -2435,7 +2448,8 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["RemoveMean"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [bool]")
             self.Bmf_Conv.setText("Converter: Ready!")
-            self.Bmf_Exp.setText("If True, all meanData will be removed from the MeasData-array!")
+            self.Bmf_Exp.setText("Choose if mean values should be ignored or not! What this does is: get the mean values for all input signals.\n"
+                                 "When done getting all values the original data is reduced by them.")
             self.Bmf_New.setText(str(self.TBCfg["RemoveMean"]))
 
         elif showMe == "Window":
@@ -2444,7 +2458,8 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["Window"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [bool]")
             self.Bmf_Conv.setText("Converter: Read!")
-            self.Bmf_Exp.setText("If true, lays a special cost-function over Data/DataShape!")
+            self.Bmf_Exp.setText("If true, lays a special cost-function over Data/DataShape! To be precise: the cost function consists of a 2D-Window\n"
+                                 "which is a Hanning-Window. This means discontinuities at the beginning and end of a sampled signal will get smoothened.")
             self.Bmf_New.setText(str(self.TBCfg["Window"]))
 
         elif showMe == "dB":
@@ -2453,7 +2468,8 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["dB"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [bool]")
             self.Bmf_Conv.setText("Converter: Ready!")
-            self.Bmf_Exp.setText("Choose between Raw Data and Data as dBV!")
+            self.Bmf_Exp.setText("Choose between Raw Data and Data as dBV! The diffrence between Raw Data and dBV is the factor 20*log10!\n"
+                                 "This means that 20*log10(RawData) = dBV")
             self.Bmf_New.setText(str(self.TBCfg["dB"]))
 
         elif showMe == "FuSca":
@@ -2462,7 +2478,7 @@ class MainWindow(QMainWindow):
             original = str(self.SBCfg["FuSca"])
             self.Bmf_Orig.setText("Original Value:\n"+original+" [const]")
             self.Bmf_Conv.setText("No Conversion!")
-            self.Bmf_Exp.setText("This is the Data-Scaling-value for post-FFT arrays.")
+            self.Bmf_Exp.setText("This is the Data-Scaling-value for post-FFT arrays. This Value is a constant and should not be changed!")
             self.Bmf_New.setText(str(self.TBCfg["FuSca"]))
 
         else:
@@ -2612,6 +2628,7 @@ class MainWindow(QMainWindow):
         if cont:
             self.BFCfg = dict(self.TBCfg)
             self.errmsg("Confirmed!", "Config saved successfully!", "i")
+            self.Bmf_Wndw.close()
         else:
             self.errmsg("Config not set!", "The User-Config is not set, but still saved in the Window!", "i")
 
@@ -2644,7 +2661,7 @@ class MainWindow(QMainWindow):
         self.RD_Lst.setFixedWidth(150)
 
 #-------Add names to list-------#
-        Opts = ["RangeFFT", "VelFFT", "Abs", "Ext", "RMin", "RMax", "RemoveMean", "N", "Np", "Window", "dB", "FuSca", "fc", "Tp", "ThresdB"]
+        Opts = ["RangeFFT", "VelFFT", "Abs", "Ext", "RMin", "RMax", "RemoveMean", "Window", "dB", "FuSca", "ThresdB", "NIni"]
         self.RD_Lst.addItems(Opts)
         self.RD_Lst.currentItemChanged.connect(self.RD_CFG_UPDATE)
 
@@ -2741,7 +2758,8 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["RemoveMean"])
             self.RD_Orig.setText("Original Value:\n" + original + " [bool]")
             self.RD_Conv.setText("Converter: Ready!")
-            self.RD_Exp.setText("Choose if mean values are taken into account or not!")
+            self.RD_Exp.setText("Choose if mean values should be ignored or not! What this does is: get the mean values for all input signals.\n"
+                                "When done getting all values the original data is reduced by them.")
             self.RD_New.setText(str(self.TRCfg["RemoveMean"]))
 
         elif showMe == "Abs":
@@ -2750,7 +2768,8 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["Abs"])
             self.RD_Orig.setText("Original Value:\n" + original + " [bool]")
             self.RD_Conv.setText("Converter: Ready!")
-            self.RD_Exp.setText("Choose if the absolut values should be used or not!")
+            self.RD_Exp.setText("Choose if the absolut values should be used or not!\n"
+                                "This means that the total diffrence is taken. e.g.: abs(6) = 6; abs(-6) = 6")
             self.RD_New.setText(str(self.TRCfg["Abs"]))
 
         elif showMe == "Ext":
@@ -2759,7 +2778,7 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["Ext"])
             self.RD_Orig.setText("Original Value:\n" + original + " [bool]")
             self.RD_Conv.setText("Converter: Ready!")
-            self.RD_Exp.setText("Choose if you want to take RMin and RMax into account!")
+            self.RD_Exp.setText("Choose if you want to take RMin and RMax into account! If set to 0 no Range Interval will get extracted!")
             self.RD_New.setText(str(self.TRCfg["Ext"]))
 
         elif showMe == "RMin":
@@ -2768,8 +2787,8 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["RMin"])
             self.RD_Orig.setText("Original Value:\n" + original + " [m]")
             self.RD_Conv.setText("Converter: Ready!")
-            self.RD_Exp.setText("Defines the minimum Range. Everything in front of this point will get ignored.\n"
-                                "Use this variable to Scale the y-axis of the plot!")
+            self.RD_Exp.setText("Defines the minimum Range. Everything in front of this point will get ignored.\nUse this Variable to Scale the y-axis of the plot! "
+                                "This only works if Extract Range Interval is true! -> Ext: " + str(bool(self.TRCfg["Ext"])))
             self.RD_New.setText(str(self.TRCfg["RMin"]))
 
         elif showMe == "RMax":
@@ -2778,8 +2797,8 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["RMax"])
             self.RD_Orig.setText("Original Name:\n" + original + " [m]")
             self.RD_Conv.setText("Converter: Ready!")
-            self.RD_Exp.setText("Defines the maximum Range. Everything behind this point will get ignored.\n"
-                                "Use this variable to Scale the y-axis of the plot!")
+            self.RD_Exp.setText("Defines the maximum Range. Everything behind this point will get ignored.\nUse this Variable to Scale the y-axis of the plot! "
+                                "This only works if Extract Range Interval is true! -> Ext: " + str(bool(self.TRCfg["Ext"])))
             self.RD_New.setText(str(self.TRCfg["RMax"]))
 
         elif showMe == "N":
@@ -2806,7 +2825,8 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["Window"])
             self.RD_Orig.setText("Original Name:\n"+original+" [bool]")
             self.RD_Conv.setText("Converter: Ready!")
-            self.RD_Exp.setText("If true, lays a special cost-function over Data/DataShape!")
+            self.RD_Exp.setText("If true, lays a special cost-function over Data/DataShape! To be precise: the cost function consists of a 2D-Window\n"
+                                "which is a Hanning-Window. This means discontinuities at the beginning and end of a sampled signal will get smoothened.")
             self.RD_New.setText(str(self.TRCfg["Window"]))
 
         elif showMe == "dB":
@@ -2815,7 +2835,8 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["dB"])
             self.RD_Orig.setText("Original Value:\n"+original+" [bool]")
             self.RD_Conv.setText("Converter: Ready!")
-            self.RD_Exp.setText("Choose between Raw Data and Data as dBV!")
+            self.RD_Exp.setText("Choose between Raw Data and Data as dBV! The diffrence between Raw Data and dBV is the factor 20*log10!\n"
+                                "This means that 20*log10(RawData) = dBV")
             self.RD_New.setText(str(self.TRCfg["dB"]))
 
         elif showMe == "FuSca":
@@ -2824,7 +2845,7 @@ class MainWindow(QMainWindow):
             original = str(self.SRCfg["FuSca"])
             self.RD_Orig.setText("Original Value:\n"+original+" [const]")
             self.RD_Conv.setText("No Conversion!")
-            self.RD_Exp.setText("This is the Data-Scaling-value for post-FFT arrays.")
+            self.RD_Exp.setText("This is the Data-Scaling-value for post-FFT arrays. This Value is a constant and should not be changed!")
             self.RD_New.setText(str(self.TRCfg["FuSca"]))
 
         elif showMe == "fc":
@@ -2853,6 +2874,15 @@ class MainWindow(QMainWindow):
             self.RD_Conv.setText("No Convertion!")
             self.RD_Exp.setText("array with the threshold values of a Data-array -> Scaled values to dBV!")
             self.RD_New.setText(str(self.TRCfg["ThresdB"]))
+
+        elif showMe == "NIni":
+            self.RD_Ttl.setText("NIni - ignore samples")
+            self.RD_Var.setText("Variable Name:\n"+showMe)
+            original = str(self.SRCfg["NIni"])
+            self.RD_Orig.setText("Original Value:\n"+original+" [samples]")
+            self.RD_Conv.setText("No Conversion!")
+            self.RD_Exp.setText("This is the number of samples that gets ignored when passing RangeDoppler a Measurement-Frame.\n"
+                                "Originally this value is 1 because the first line of a Measurement-Frame is allways the Channel!")
 
         else:
             self.errmsg("NameError!", "Item '" + showMe + "' not found!", "c")
@@ -2991,6 +3021,7 @@ class MainWindow(QMainWindow):
         if cont:
             self.RDCfg = dict(self.TRCfg)
             self.errmsg("Confirmed!", "Config set successfully!", "i")
+            self.RD_Wndw.close()
         else:
             self.errmsg("Config not set!", "The User-Config is not set, but still temporarly saved in the Window!", "i")
 
@@ -3023,7 +3054,7 @@ class MainWindow(QMainWindow):
         self.RP_Lst.setFixedWidth(150)
 
 #-------add names to listwidget-------#
-        Opts = ["NFFT", "Abs", "Ext", "RMin", "RMax", "RemoveMean", "Window", "XPos", "dB", "FuSca"]
+        Opts = ["NFFT", "Abs", "Ext", "RMin", "RMax", "RemoveMean", "Window", "XPos", "dB", "FuSca", "NIni"]
         self.RP_Lst.addItems(Opts)
         self.RP_Lst.currentItemChanged.connect(self.RP_CFG_UPDATE)
 
@@ -3115,7 +3146,8 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["Abs"])
             self.RP_Orig.setText("Original Value:\n"+original+" [bool]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("Choose if the absolut values should be used or not!")
+            self.RP_Exp.setText("Choose if the absolut values should be used or not!\n"
+                                "This means that the total diffrence is taken. e.g.: abs(6) = 6; abs(-6) = 6")
             self.RP_New.setText(str(self.TPCfg["Abs"]))
 
         elif showMe == "Ext":
@@ -3124,7 +3156,7 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["Ext"])
             self.RP_Orig.setText("Original Value:\n"+original+" [bool]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("Choose if you want to take RMin and RMax into account!")
+            self.RP_Exp.setText("Choose if you want to take RMin and RMax into account! If set to 0 no Range Interval will get extracted!")
             self.RP_New.setText(str(self.TPCfg["Ext"]))
 
         elif showMe == "RMin":
@@ -3133,7 +3165,8 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["RMin"])
             self.RP_Orig.setText("Original Value:\n"+original+" [m]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("Defines the minimum Range. Everything before this point will get ignored!")
+            self.RP_Exp.setText("Defines the minimum Range. Everything in front of this point will get ignored.\nUse this Variable to Scale the y-axis of the plot! "
+                                "This only works if Extract Range Interval is true! -> Ext: " + str(bool(self.TPCfg["Ext"])))
             self.RP_New.setText(str(self.TPCfg["RMin"]))
 
         elif showMe == "RMax":
@@ -3142,7 +3175,8 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["RMax"])
             self.RP_Orig.setText("Original Value:\n"+original+" [m]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("Defines the maximum Range. Everything behind this point will get ignored!")
+            self.RP_Exp.setText("Defines the maximum Range. Everything behind this point will get ignored.\nUse this Variable to Scale the y-axis of the plot! "
+                                "This only works if Extract Range Interval is true! -> Ext: " + str(bool(self.TPCfg["Ext"])))
             self.RP_New.setText(str(self.TPCfg["RMax"]))
 
         elif showMe == "RemoveMean":
@@ -3151,7 +3185,8 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["RemoveMean"])
             self.RP_Orig.setText("Original Value:\n"+original+" [bool]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("Choose if mean values should be ignored or not!")
+            self.RP_Exp.setText("Choose if mean values should be ignored or not! What this does is: get the mean values for all input signals.\n"
+                                "When done getting all values the original data is reduced by them.")
             self.RP_New.setText(str(self.TPCfg["RemoveMean"]))
 
         elif showMe == "Window":
@@ -3160,7 +3195,8 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["Window"])
             self.RP_Orig.setText("Original Value:\n"+original+" [bool]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("If true, lays a special cost-function over Data/DataShape!")
+            self.RP_Exp.setText("If true, lays a special cost-function over Data/DataShape! To be precise: the cost function consists of a 2D-Window\n"
+                                "which is a Hanning-Window. This means discontinuities at the beginning and end of a sampled signal will get smoothened.")
             self.RP_New.setText(str(self.TPCfg["Window"]))
 
         elif showMe == "XPos":
@@ -3169,7 +3205,8 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["XPos"])
             self.RP_Orig.setText("Original Value:\n"+original+" [bool]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("If true, only takes positive RangeProfileValues!")
+            self.RP_Exp.setText("If true, only takes positive RangeProfileValues! The RangeProfileFFT-calculation\nexpands the passed MeasurementData "
+                                "in both positive and negative Range.")
             self.RP_New.setText(str(self.TPCfg["XPos"]))
 
         elif showMe == "dB":
@@ -3178,7 +3215,8 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["dB"])
             self.RP_Orig.setText("Original Value:\n"+original+" [bool]")
             self.RP_Conv.setText("Converter: Ready!")
-            self.RP_Exp.setText("Choose between Raw Data and Data as dBV!")
+            self.RP_Exp.setText("Choose between Raw Data and Data as dBV! The diffrence between Raw Data and dBV is the factor 20*log10!\n"
+                                "This means that 20*log10(RawData) = dBV")
             self.RP_New.setText(str(self.TPCfg["dB"]))
 
         elif showMe == "FuSca":
@@ -3187,8 +3225,18 @@ class MainWindow(QMainWindow):
             original = str(self.SPCfg["FuSca"])
             self.RP_Orig.setText("Original Value:\n"+original+" [const]")
             self.RP_Conv.setText("No Conversion!")
-            self.RP_Exp.setText("This is the Data-Scaling-value for post-FFT arrays.")
+            self.RP_Exp.setText("This is the Data-Scaling-value for post-FFT arrays. This Value is a constant and should not be changed!")
             self.RP_New.setText(str(self.TPCfg["FuSca"]))
+
+        elif showMe == "NIni":
+            self.RP_Ttl.setText("NIni - ignore samples")
+            self.RP_Var.setText("Variable Name:\n"+showMe)
+            original = str(self.SPCfg["NIni"])
+            self.RP_Orig.setText("Original Value:\n"+original+" [samples]")
+            self.RP_Conv.setText("No Conversion!")
+            self.RP_Exp.setText("This is the number of samples that gets ignored when passing RangeProfile a Measurement-Frame.\n"
+                                "Originally this value is 1 because the first line of a Measurement-Frame is allways the Channel!")
+            self.RP_New.setText(str(self.TPCfg["NIni"]))
 
         else:
             self.errmsg("NameError!", "Item '" + showMe + "' not found!", "c")
@@ -3255,6 +3303,12 @@ class MainWindow(QMainWindow):
                     else:
                         raise LookupError
 
+                elif showMe == "NIni":
+                    if int(value) in range(0, self.BCfg["N"]):
+                        self.TPCfg["NIni"] = float(value)
+                    else:
+                        raise LookupError
+
                 else:
                     raise ValueError
             else:
@@ -3293,6 +3347,7 @@ class MainWindow(QMainWindow):
         if cont:
             self.RPCfg = dict(self.TPCfg)
             self.errmsg("Confirmed!", "Config set successfully!", "i")
+            self.RP_Wndw.close()
         else:
             self.errmsg("Config not set!", "The User-defined-Config is not set, but still saved in the Window!", "i")
 
@@ -3354,12 +3409,6 @@ class MainWindow(QMainWindow):
             if len(self.videoname) < 1:
                 raise NameError
 
-            images = [img for img in os.listdir("vc") if img.endswith(".png")]
-
-            frame = cv2.imread(os.path.join("vc", images[0]))
-
-            height, width, layers = frame.shape
-
             self.saveplace = QFileDialog.getExistingDirectory()
 
             self.savefull = self.saveplace + "/" + self.videoname
@@ -3371,12 +3420,11 @@ class MainWindow(QMainWindow):
             else:
                 raise TypeError
 
-            self.video = cv2.VideoWriter(self.savefull, 0, 1, (width, height))
+            images = []
+            for image in glob.glob("vc/*.png"):
+                images.append(imageio.imread(image))
+            imageio.mimsave(self.savefull, images)
 
-            for image in images:
-                self.video.write(cv2.imread(os.path.join("vc", image)))
-
-            self.video.release()
             self.errmsg("Video created!", "Creation of Video succesfull!", "i")
 
             for image in glob.glob("vc/*.png"):
@@ -3474,9 +3522,6 @@ class MainWindow(QMainWindow):
             for image in glob.glob("vc/*.png"):
                 images.append(imageio.imread(image))
             imageio.mimsave(vidsave, images)
-#-----------clear videocache-----------#
-            for image in glob.glob("vc/*.png"):
-                os.remove(image)
 #-----------create saveconfig-----------#
             to_save = {"Board": self.BCfg,
                        "Beam": self.BFCfg,
@@ -3609,7 +3654,7 @@ class MainWindow(QMainWindow):
             self.AAng[:lAng] = self.JAng
             self.AAng[-1] = np.ediff1d(self.JAng)[-1] + self.JAng[-1]
             self.MaxTab.clearContents()
-            self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+            self.MaxTab.setRowCount(1)
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem("FMCW"))
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(self.BCfg["NrFrms"])))
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem("<-- total"))
@@ -3638,7 +3683,7 @@ class MainWindow(QMainWindow):
                         self.JNorm[self.JNorm < self.NVal] = self.NVal
                     else:
                         self.JNorm = self.JOpt
-                    self.plt.pcolormesh(self.AAng, self.ARan, self.JNorm)
+                    self.plt.pcolormesh(self.AAng, self.ARan, self.JNorm, shading="auto")
                     self.plt.set_xlabel("Angle [deg]")
                     self.plt.set_ylabel("Range [m]")
                     self.plt.set_ylim(self.BFCfg["RMin"], self.BFCfg["RMax"])
@@ -3660,7 +3705,8 @@ class MainWindow(QMainWindow):
             self.AVel = np.zeros(lVel)
             self.AVel[:lVel] = self.JVel
             self.AVel[-1] = np.ediff1d(self.JVel)[-1] + self.JVel[-1]
-            self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+            self.MaxTab.clearContents()
+            self.MaxTab.setRowCount(1)
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem("RangeDoppler"))
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(self.BCfg["NrFrms"])))
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem("<-- total"))
@@ -3676,10 +3722,10 @@ class MainWindow(QMainWindow):
                 self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem(str(RDMax)))
                 if self.Norm:
                     RDNorm = RD - RDMax
-                    self.RDNorm[RDNorm < self.NVal] = self.NVal
+                    RDNorm[RDNorm < self.NVal] = self.NVal
                 else:
-                    self.RDNorm = RD
-                self.plt.pcolormesh(self.AVel, self.ARan, self.RDNorm)
+                    RDNorm = RD
+                self.plt.pcolormesh(self.AVel, self.ARan, RDNorm, shading="auto")
                 self.plt.set_xlabel("Velocity [deg/sec]")
                 self.plt.set_ylabel("Range [m]")
                 self.plt.set_ylim(self.RDCfg["RMin"], self.RDCfg["RMax"])
@@ -3693,7 +3739,8 @@ class MainWindow(QMainWindow):
             self.Proc.CfgRangeProfile(self.RPCfg)
             self.RanSca = self.Proc.GetRangeProfile("Range")
             self.PData = np.zeros((int(self.BCfg["N"]), int(32)))
-            self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+            self.MaxTab.clearContents()
+            self.MaxTab.setRowCount(1)
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 0, QTableWidgetItem("RangeProfile"))
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1, QTableWidgetItem(str(self.BCfg["NrFrms"])))
             self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2, QTableWidgetItem("<-- total"))
@@ -3749,9 +3796,12 @@ class MainWindow(QMainWindow):
 #---quit simulation-function---#
     def REPORT_REPCSV_QUIT(self):
 #-------find widget and delete it-------#
-        item = self.MWLayout.itemAt(self.ccc)
-        widget = item.widget()
-        widget.setParent(None)
+        try:
+            item = self.MWLayout.itemAt(self.ccc)
+            widget = item.widget()
+            widget.setParent(None)
+        except AttributeError:
+            pass
 #-------clear figure-------#
         self.FGR_CLR()
 #-------end while-loop if still running-------#
