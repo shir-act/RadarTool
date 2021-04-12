@@ -315,8 +315,8 @@ class RadarProc(object):
             self.RangeProfile_RemoveMean    =   dCfg["RemoveMean"]
         if 'Window' in dCfg:
             self.RangeProfile_Window        =   dCfg["Window"]
-        if 'FFT' in dCfg:
-            self.RangeProfile_FFT           =   dCfg["FFT"]
+        if 'NFFT' in dCfg:
+            self.RangeProfile_FFT           =   dCfg["NFFT"]
             self.RangeProfile_FFT           =   round(self.RangeProfile_FFT/2)*2
         if 'XPos' in dCfg:
             self.RangeProfile_XPos          =   dCfg["XPos"]
