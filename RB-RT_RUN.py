@@ -4,6 +4,7 @@ from Mimo77L import Mimo77L
 import RadarProc
 import matplotlib as mpl
 from matplotlib import figure
+from matplotlib.gridspec import GridSpec
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FCA
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NTb
 from PyQt5 import QtGui
@@ -24,6 +25,7 @@ mpl.use("Qt5Agg")
 
 app = QApplication(sys.argv)
 
+global Data
 
 # MainWindow-class
 class MainWindow(QMainWindow):
@@ -73,7 +75,7 @@ class MainWindow(QMainWindow):
         self.RPcsv = pd.read_csv("plot/RP_PLT.csv", sep=";", decimal=",")
 
 #-------speed of light variable-------#
-        self.c0 = 3e8
+        self.c0 = 2.99792458e8
 
 #-------define std. CalData-------#
         self.CD = np.array([ 0.82285863+0.67258483j,  0.1000405 -0.81363678j,
@@ -96,12 +98,12 @@ class MainWindow(QMainWindow):
 #-------Define Standard-Cfg-------#
         self.StdCfg = {}
         self.StdCfg["fStrt"] = 76e9
-        self.StdCfg["fStop"] = 79e9
-        self.StdCfg["TRampUp"] = 25.6e-6
-        self.StdCfg["TRampDo"] = 1e-6
-        self.StdCfg["TInt"] = 1000e-3
-        self.StdCfg["Tp"] = 150e-6
-        self.StdCfg["N"] = 504
+        self.StdCfg["fStop"] = 77e9
+        self.StdCfg["TRampUp"] = 256e-6
+        self.StdCfg["TRampDo"] = 10e-6
+        self.StdCfg["TInt"] = 5e-3
+        self.StdCfg["Tp"] = 316e-6
+        self.StdCfg["N"] = 640
         self.StdCfg["Np"] = 4
         self.StdCfg["NrFrms"] = 100
         self.StdCfg["TxSeq"] = np.array([1, 2, 3, 4])
@@ -109,6 +111,8 @@ class MainWindow(QMainWindow):
         self.StdCfg["IniTim"] = 5e-3
         self.StdCfg["CfgTim"] = 50e-6
         self.StdCfg["ExtEve"] = 0
+        self.StdCfg["RMin"] = 1
+        self.StdCfg["RMax"] = 10
 
         self.BCfg = dict(self.StdCfg)
         self.TCfg = dict(self.BCfg)
@@ -121,18 +125,17 @@ class MainWindow(QMainWindow):
         self.SBCfg["fs"] = -1
         self.SBCfg["kf"] = -1
         self.SBCfg["RangeFFT"] = 1024
-        self.SBCfg["AngFFT"] = 256
+        self.SBCfg["AngFFT"] = 128
         self.SBCfg["Abs"] = 1
         self.SBCfg["Ext"] = 1
-        self.SBCfg["RMin"] = 1
-        self.SBCfg["RMax"] = 10
+        self.SBCfg["RMin"] = self.TCfg["RMin"]
+        self.SBCfg["RMax"] = self.TCfg["RMax"]
         self.SBCfg["CalData"] = None
         self.SBCfg["ChnOrder"] = Chn
         self.SBCfg["NIni"] = 1
         self.SBCfg["RemoveMean"] = 1
         self.SBCfg["Window"] = 1
         self.SBCfg["dB"] = 1
-        self.SBCfg["FuSca"] = 2/2048
 
         self.BFCfg = dict(self.SBCfg)
         self.TBCfg = dict(self.BFCfg)
@@ -145,14 +148,13 @@ class MainWindow(QMainWindow):
         self.SRCfg["VelFFT"] = 1024
         self.SRCfg["Abs"] = 1
         self.SRCfg["Ext"] = 1
-        self.SRCfg["RMin"] = 1
-        self.SRCfg["RMax"] = 10
+        self.SRCfg["RMin"] = self.TCfg["RMin"]
+        self.SRCfg["RMax"] = self.TCfg["RMax"]
         self.SRCfg["N"] = self.BCfg["N"]
         self.SRCfg["Np"] = self.BCfg["Np"]
         self.SRCfg["RemoveMean"] = 1
         self.SRCfg["Window"] = 1
         self.SRCfg["dB"] = 1
-        self.SRCfg["FuSca"] = 2/2048
         self.SRCfg["fc"] = (self.BCfg["fStrt"] + self.BCfg["fStop"]) / 2
         self.SRCfg["Tp"] = self.BCfg["Tp"]
         self.SRCfg["ThresdB"] = 0
@@ -161,7 +163,6 @@ class MainWindow(QMainWindow):
         self.RDCfg = dict(self.SRCfg)
         self.TRCfg = dict(self.RDCfg)
 
-
 #-------define standard RangeProfile-Config-------#
         self.SPCfg = {}
         self.SPCfg["fs"] = -1
@@ -169,21 +170,37 @@ class MainWindow(QMainWindow):
         self.SPCfg["NFFT"] = 4096
         self.SPCfg["Abs"] = 1
         self.SPCfg["Ext"] = 1
-        self.SPCfg["RMin"] = 1
-        self.SPCfg["RMax"] = 10
+        self.SPCfg["RMin"] = self.TCfg["RMin"]
+        self.SPCfg["RMax"] = self.TCfg["RMax"]
         self.SPCfg["RemoveMean"] = 1
         self.SPCfg["Window"] = 1
         self.SPCfg["XPos"] = 1
         self.SPCfg["dB"] = 1
-        self.SPCfg["FuSca"] = 2/2048
         self.SPCfg["NIni"] = 1
 
         self.RPCfg = dict(self.SPCfg)
         self.TPCfg = dict(self.RPCfg)
 
+#-------define standard RCS-Config-------#
+        self.RCfg = {}
+        self.RCfg["RFFT"] = 4096
+        self.RCfg["AFFT"] = 512
+        self.RCfg["RMin"] = self.TCfg["RMin"]
+        self.RCfg["RMax"] = self.TCfg["RMax"]
+
 #-------define standard TxChn and TxPwr-------#
         self.TxChn = 4
-        self.TxPwr = 63
+        self.TxPwr = 60
+
+#-------define standard RCS Variables-------#
+        self.PP = [-0.000007136913372, 0.001293223792425, -0.086184394495573,
+                   2.521879013288421, -20.615765519181373]
+        self.La = 3
+        self.G_Tx = 16
+        self.G_Rx = 14
+        self.G_c = 17
+        self.C1 = 100e-9
+        self.R1 = 5e3
 
 #-------start GUI-Creation-------#
         self.start_gui()
@@ -195,7 +212,7 @@ class MainWindow(QMainWindow):
         self.canvas = FCA(self.figure)
         self.toolbar = NTb(self.canvas, self)
         self.figure.subplots_adjust(
-            top=0.86, bottom=0.05, left=0.12, right=0.74, hspace=0, wspace=0)
+            top=0.86, bottom=0.05, left=0.1, right=0.71, hspace=0, wspace=0)
 
 #-------Create QButtonGroup for every type of connection and a way to disconnect-------#
         self.Con_Group = QButtonGroup()
@@ -260,6 +277,13 @@ class MainWindow(QMainWindow):
         self.Brd_Msr_FMCW.clicked.connect(self.BRD_MSR_FMCW)
         self.Brd_Msr_FMCW.setEnabled(False)
 
+#-------Create a Button for FMCW-RP hybrid measurements-------#
+        self.Brd_Msr_RCS = QPushButton("RadarCrossSection:\nRange|Area...")
+        self.Brd_Msr_RCS.setToolTip("starts the RCS measurement with "
+                                       "before set variables...")
+        self.Brd_Msr_RCS.clicked.connect(self.BRD_MSR_RCS)
+        self.Brd_Msr_RCS.setEnabled(False)
+
 #-------Create a Button to start RangeDoppler-Measurements-------#
         self.Brd_Msr_RD = QPushButton("RangeDoppler:\nRange|Velocity...")
         self.Brd_Msr_RD.setToolTip(
@@ -315,7 +339,7 @@ class MainWindow(QMainWindow):
         self.MaxTab.setHorizontalHeaderItem(
             1, QTableWidgetItem("SequenceRepeat [NrFrms]:"))
         self.MaxTab.setHorizontalHeaderItem(
-            2, QTableWidgetItem("max. Value [dbV]"))
+            2, QTableWidgetItem("max. Value [dbV/dBm²]"))
         header = self.MaxTab.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
 
@@ -412,13 +436,14 @@ class MainWindow(QMainWindow):
         self.MWLayout.addWidget(self.Brd_Pwr_Btn, 2, 0, 1, 1)
         self.MWLayout.addWidget(self.MaxTab, 2, 9, 12, 2)
         self.MWLayout.addWidget(self.Brd_Msr_FMCW, 3, 0, 1, 1)
-        self.MWLayout.addWidget(self.Brd_Msr_RD, 4, 0, 1, 1)
-        self.MWLayout.addWidget(self.Brd_Msr_RP, 5, 0, 1, 1)
-        self.MWLayout.addWidget(self.Brd_Ccl, 6, 0, 1, 1)
-        self.MWLayout.addWidget(self.Rst_PshBtn, 7, 0, 1, 1)
-        self.MWLayout.addWidget(self.Brd_Shw_Cfgs, 8, 0, 1, 1)
-        self.MWLayout.addWidget(self.Rep_repeat, 9, 0, 1, 1)
-        self.MWLayout.addWidget(self.Rep_repcsv, 10, 0, 1, 1)
+        self.MWLayout.addWidget(self.Brd_Msr_RCS, 4, 0, 1, 1)
+        self.MWLayout.addWidget(self.Brd_Msr_RD, 5, 0, 1, 1)
+        self.MWLayout.addWidget(self.Brd_Msr_RP, 6, 0, 1, 1)
+        self.MWLayout.addWidget(self.Brd_Ccl, 7, 0, 1, 1)
+        self.MWLayout.addWidget(self.Rst_PshBtn, 8, 0, 1, 1)
+        self.MWLayout.addWidget(self.Brd_Shw_Cfgs, 9, 0, 1, 1)
+        self.MWLayout.addWidget(self.Rep_repeat, 10, 0, 1, 1)
+        self.MWLayout.addWidget(self.Rep_repcsv, 11, 0, 1, 1)
         self.MWLayout.addWidget(self.Vrs_Lbl, 14, 10, 1, 1)
 
 #-------set MainWindowLayout to defined MWLayout-------#
@@ -714,6 +739,7 @@ class MainWindow(QMainWindow):
             self.Brd_Pwr_Btn.setEnabled(True)
 #-----------Enable Measurements-----------#
             self.Brd_Msr_FMCW.setEnabled(True)
+            self.Brd_Msr_RCS.setEnabled(True)
             self.Brd_Msr_RD.setEnabled(True)
             self.Brd_Msr_RP.setEnabled(True)
 #-----------Enable ResetButton-----------#
@@ -732,6 +758,7 @@ class MainWindow(QMainWindow):
             self.Brd_Pwr_Btn.setEnabled(False)
 #-----------disable Measurement-----------#
             self.Brd_Msr_FMCW.setEnabled(False)
+            self.Brd_Msr_RCS.setEnabled(False)
             self.Brd_Msr_RD.setEnabled(False)
             self.Brd_Msr_RP.setEnabled(False)
 #-----------disable ResetButton-----------#
@@ -933,6 +960,9 @@ class MainWindow(QMainWindow):
 #-------enable cancel-button-------#
         self.Brd_Ccl.setEnabled(True)
 
+#-------disable FMCW-RP-hybrid measurement-------#
+        self.Brd_Msr_RCS.setEnabled(False)
+
 #-------disable RangeDoppler-------#
         self.Brd_Msr_RD.setEnabled(False)
 
@@ -955,7 +985,7 @@ class MainWindow(QMainWindow):
         self.Board.RfTxEna(self.TxChn, self.TxPwr)
 
 #-------set Config and triggermode-------#
-        self.Board.RfMeas("ExtTrigUp_TxSeq", self.BCfg)
+        self.Board.RfMeas("ExtTrigUp", self.BCfg)
 
 #-------get values needed for Beamforming-------#
         N = self.Board.Get("N")
@@ -1057,6 +1087,7 @@ class MainWindow(QMainWindow):
 #---------------check for cancel-commands---------------#
                 if self.cancel:
                     self.Brd_Ccl.setEnabled(False)
+                    self.Brd_Msr_RCS.setEnabled(True)
                     self.Brd_Msr_RD.setEnabled(True)
                     self.Brd_Msr_RP.setEnabled(True)
                     self.Rep_repeat.setEnabled(True)
@@ -1068,6 +1099,7 @@ class MainWindow(QMainWindow):
 
 #-------reset when done-------#
         self.Brd_Ccl.setEnabled(False)
+        self.Brd_Msr_RCS.setEnabled(True)
         self.Brd_Msr_RD.setEnabled(True)
         self.Brd_Msr_RP.setEnabled(True)
         self.Rep_repeat.setEnabled(True)
@@ -1075,6 +1107,236 @@ class MainWindow(QMainWindow):
         self.errmsg("Measurement Done",
                     "Measurement completed succesfully!", "i")
         self.FMCW = 1
+        self.BRD_MSR_DN()
+
+#---Start measurement-function---#
+    def BRD_MSR_RCS(self):
+#-------reset figure etc-------#
+        self.FGR_CLR()
+        self.BRD_RST(F=True)
+        self.RD = 0
+        self.RP = 0
+        self.FMCW = 0
+        global Data
+#-------check if connection is still active or raise ConnectionError-------#
+        try:
+            if self.connected:
+                pass
+            else:
+                self.connected = False
+                self.Con_Sts_Pic.setPixmap(
+                    QtGui.QPixmap("pics/red.png").scaled(30, 30))
+                raise ConnectionError
+
+#-----------check if power is on or raise ValueError------------#
+            if self.Brd_Pwr_Btn.isChecked():
+                pass
+            else:
+                raise ValueError
+
+#-------except any Errors-------#
+        except ConnectionError:
+            self.errmsg(
+                "ConnectionError!", "Connection to FrontEnd has been lost!\nTry to connect again!", "c")
+            self.start_gui()
+            return
+
+        except ValueError:
+            self.errmsg(
+                "ValueError!", "The connected Board has no Power!\nPlease activate the Power first!", "w")
+            return
+
+#-------RangeProfile Question-------#
+        Q = self.errmsg("Choose a Plot-Layout...", "Do you wish to plot the data into a single plot?\n"
+                        "Single plot means a RangeProfile plot-layout!", "q")
+
+        if Q == 0:
+            RPL = True
+        else:
+            RPL = False
+
+#-------clear vc-------#
+        self.VC_CLR()
+
+#-------enable cancel-button-------#
+        self.Brd_Ccl.setEnabled(True)
+
+#-------disable RangeDoppler-------#
+        self.Brd_Msr_RD.setEnabled(False)
+
+#-------disable RangeProfile-------#
+        self.Brd_Msr_RP.setEnabled(False)
+
+#-------disable std FMCW-------#
+        self.Brd_Msr_FMCW.setEnabled(False)
+
+#-------disable Report reload-------#
+        self.Rep_repeat.setEnabled(False)
+        self.Rep_repcsv.setEnabled(False)
+
+#-------enable Beamforming-------#
+        self.Proc = RadarProc.RadarProc()
+
+#-------enable Rx and Tx-------#
+        self.Board.RfRxEna()
+        self.Board.RfTxEna(self.TxChn, self.TxPwr)
+
+#-------set Config and triggermode-------#
+        self.Board.Set('Fifo', 'On')
+        self.Board.Set('NrChn', 8)
+        self.Board.Set('ClkDiv', 1)
+        self.Board.Set("CicEna")
+        self.Board.Set('CicStages', 4)
+        self.Board.Set('CicDelay', 8)
+        self.Board.Set('CicR', 8)
+        self.Board.Set("ClkSrc", 1)
+        self.Board.Set("AdcImp", 100101)
+        self.Board.Set("AdcChn", 4)
+        self.Board.Set("AdcGain", 16)
+        self.Board.RfMeas("ExtTrigUp", self.BCfg)
+
+#-------get values needed for Calculation-------#
+        N = self.Board.Get("N")
+        fs = self.Board.Get("fs")
+        fc = self.Board.RfGet("fc")
+        kf = self.Board.RfGet("kf")
+        FuSca = self.Board.Get("FuSca")
+        NrChn = int(self.Board.Get("NrChn"))
+        NrFrms = self.BCfg["NrFrms"]
+        CalData = self.Board.BrdGetCalData({"Mask":1, "Len":72})
+
+        self.RCfg["NFFT"]    = 1024
+        self.RCfg["AFFT"]    = 64
+        self.RCfg["fs"]      = fs
+        self.RCfg["kf"]      = kf
+        self.RCfg["fc"]      = fc
+        self.RCfg["FuSca"]   = FuSca
+        self.RCfg["CalData"] = CalData
+        self.RCfg["TxPwr"] = self.TxPwr
+
+        TRPCfg = dict(self.SPCfg)
+        TRPCfg["fs"] = fs
+        TRPCfg["kf"] = kf
+        TRPCfg["FuSca"] = FuSca
+
+        self.Proc.RCSCfg(self.RCfg)
+        self.Proc.CfgRangeProfile(TRPCfg)
+
+#-------create DataContainer-------#
+        self.AllData = np.zeros((int(N), int(NrChn*NrFrms)))
+
+#-------maxtab update-------#
+        self.MaxTab.clearContents()
+        self.MaxTab.setRowCount(1)
+        self.MaxTab.setItem((self.MaxTab.rowCount()-1),
+                            0, QTableWidgetItem("RCS"))
+        self.MaxTab.setItem((self.MaxTab.rowCount()-1), 1,
+                            QTableWidgetItem(str(NrFrms)))
+        self.MaxTab.setItem((self.MaxTab.rowCount()-1), 2,
+                            QTableWidgetItem("<-- total"))
+
+#-------create plot-------#
+        if RPL:
+            self.RCS = self.figure.add_subplot(111)
+        else:
+            gs = GridSpec(5, 5, figure=self.figure)
+            self.RCS = self.figure.add_subplot(gs[:-1, 1:])
+            self.ANG = self.figure.add_subplot(gs[-1, 1:])
+            self.RAN = self.figure.add_subplot(gs[:-1, 0])
+            self.RAN2 = self.RAN.twiny()     
+            self.ANG2 = self.ANG.twinx()
+
+#-------get data-------#
+        start = ttime.time()
+        for MeasIdx in range(0, int(NrFrms)):
+            if RPL:
+                self.RCS.clear()
+                self.RCS.grid(True, "both")
+            else:
+                self.RAN.clear()
+                self.RAN.grid(True, "both")
+                self.RAN2.clear()
+                self.ANG.clear()
+                self.ANG.grid(True, "both")
+                self.ANG2.clear()
+                self.RCS.clear()
+            Data = self.Board.BrdGetData()
+            self.AllData[:, int(MeasIdx*NrChn):int((MeasIdx+1)*NrChn)] = Data
+
+#-----------calc data-----------#
+            if RPL:
+                dBsm, dBV, Range = self.Proc.RCSRP(Data)
+            else:
+                dBsm, dBV, Range, Angle = self.Proc.RCSBeamformingUla(Data)
+
+            if self.CheckNorm.isChecked():
+                mindB = np.mean(dBsm)
+            else:
+                mindB = None        
+
+#-----------maxtab update-----------#
+            delta = ttime.time() - start
+            self.MaxTab.setRowCount(self.MaxTab.rowCount() + 1)
+            self.MaxTab.setItem((self.MaxTab.rowCount()-1),
+                                0, QTableWidgetItem(str(delta)[:-3]))
+            self.MaxTab.setItem((self.MaxTab.rowCount()-1),
+                                1, QTableWidgetItem(str(MeasIdx)))
+            self.MaxTab.setItem((self.MaxTab.rowCount()-1),
+                                2, QTableWidgetItem(str(np.amax(dBsm))))
+
+#-----------plotting-----------#
+            if RPL:
+                self.RCS.plot(Range, np.max(dBsm, axis=1))
+                self.RCS.set_ylim(-120, 30)
+                self.RCS.set_ylabel("dBm²")
+                self.RCS.set_xlabel("Range [m]")
+            else:
+                self.RCS.pcolormesh(Angle, Range, dBsm, shading="auto", vmin=mindB)
+                self.RAN.plot(np.max(dBsm, axis=1), Range)
+                self.ANG.plot(Angle, np.max(dBsm, axis=0))
+                if not self.CheckNorm.isChecked():
+                    self.RAN2.plot(np.max(dBV, axis=1), Range, "r")
+                    self.ANG2.plot(Angle, np.max(dBV, axis=0), "r")
+                    self.RAN.set_xlim(-70, 20)
+                    self.RAN2.set_xlim(-120, -20)
+                    self.ANG.set_ylim(-30, 10)
+                    self.ANG2.set_ylim(-90, -50)
+                    self.RAN2.set_xlabel("dBV")
+                    self.ANG2.set_ylabel("dBV")
+                self.RAN.set_ylim(self.RCS.get_ylim())
+                self.ANG.set_xlim(self.RCS.get_xlim())
+                self.ANG.set_ylabel("dBm²")
+                self.ANG.yaxis.label.set_rotation(305)
+                self.ANG.set_xlabel("Angle [deg]")
+                self.RAN.set_ylabel("Range [m]")
+
+#-----------proccess Events-----------#
+            self.canvas.draw()
+            QApplication.processEvents()
+
+#-----------check for cancel-commands----------#
+            if self.cancel:
+                self.Brd_Ccl.setEnabled(False)
+                self.Brd_Msr_RD.setEnabled(True)
+                self.Brd_Msr_RP.setEnabled(True)
+                self.Brd_Msr_FMCW.setEnabled(True)
+                self.Rep_repeat.setEnabled(True)
+                self.Rep_repcsv.setEnabled(True)
+                self.cancel = False
+                self.errmsg(
+                    "Canceled!", "Measurement after User-Input abortet!", "i")
+                return
+
+#-------reset when done-------#
+        self.Brd_Ccl.setEnabled(False)
+        self.Brd_Msr_RD.setEnabled(True)
+        self.Brd_Msr_RP.setEnabled(True)
+        self.Brd_Msr_FMCW.setEnabled(True)
+        self.Rep_repeat.setEnabled(True)
+        self.Rep_repcsv.setEnabled(True)
+        self.errmsg("Measurement Done",
+                    "Measurement completed succesfully!", "i")
+        self.RCSM = 1
         self.BRD_MSR_DN()
 
 #---Start RangeDoppler-Measurement---#
@@ -1120,6 +1382,9 @@ class MainWindow(QMainWindow):
 
 #-------disable FMCW-------#
         self.Brd_Msr_FMCW.setEnabled(False)
+
+#-------disable FMCW-RP-hybrid measurements-------#
+        self.Brd_Msr_RCS.setEnabled(False)
 
 #-------disabled RangeProfile-------#
         self.Brd_Msr_RP.setEnabled(False)
@@ -1226,6 +1491,7 @@ class MainWindow(QMainWindow):
             if self.cancel:
                 self.Brd_Ccl.setEnabled(False)
                 self.Brd_Msr_FMCW.setEnabled(True)
+                self.Brd_Msr_RCS.setEnabled(False)
                 self.Brd_Msr_RP.setEnabled(True)
                 self.Rep_repeat.setEnabled(True)
                 self.Rep_repcsv.setEnabled(True)
@@ -1237,6 +1503,7 @@ class MainWindow(QMainWindow):
 #-------reset when done-------#
         self.Brd_Ccl.setEnabled(False)
         self.Brd_Msr_FMCW.setEnabled(True)
+        self.Brd_Msr_RCS.setEnabled(False)
         self.Brd_Msr_RP.setEnabled(True)
         self.Rep_repeat.setEnabled(True)
         self.Rep_repcsv.setEnabled(True)
@@ -1285,6 +1552,9 @@ class MainWindow(QMainWindow):
         self.Brd_Msr_FMCW.setEnabled(False)
         self.Brd_Msr_RD.setEnabled(False)
 
+#-------disable FMCW-RP-hybrid measurements-------#
+        self.Brd_Msr_RCS.setEnabled(False)
+
 #-------disable Report reload-------#
         self.Rep_repeat.setEnabled(False)
         self.Rep_repcsv.setEnabled(False)
@@ -1297,7 +1567,7 @@ class MainWindow(QMainWindow):
         self.Board.RfTxEna(self.TxChn, self.TxPwr)
 
 #-------set BoardConfig-------#
-        self.Board.RfMeas("ExtTrigUp_TxSeq", self.BCfg)
+        self.Board.RfMeas("ExtTrigUp", self.BCfg)
 
 #-------get calibrationData-------#
         self.calcData = self.Board.BrdGetCalData({"Mask": 1, "Len": 64})
@@ -1392,6 +1662,7 @@ class MainWindow(QMainWindow):
             if self.cancel:
                 self.Brd_Ccl.setEnabled(False)
                 self.Brd_Msr_FMCW.setEnabled(True)
+                self.Brd_Msr_RCS.setEnabled(True)
                 self.Brd_Msr_RD.setEnabled(True)
                 self.Rep_repeat.setEnabled(True)
                 self.Rep_repcsv.setEnabled(True)
@@ -1403,6 +1674,7 @@ class MainWindow(QMainWindow):
 #-------reset when done-------#
         self.Brd_Ccl.setEnabled(False)
         self.Brd_Msr_FMCW.setEnabled(True)
+        self.Brd_Msr_RCS.setEnabled(True)
         self.Brd_Msr_RD.setEnabled(True)
         self.Rep_repeat.setEnabled(True)
         self.Rep_repcsv.setEnabled(True)
@@ -1439,7 +1711,7 @@ class MainWindow(QMainWindow):
 #-------Add the some names to the list-------#
         Opts = ["fStrt", "fStop", "TRampUp", "TRampDo", "Np",
                 "N", "NrFrms", "Tp", "TInt", "TxSeq",
-                "CfgTim"]
+                "CfgTim", "RMin", "RMax"]
         self.Cfg_Lst.addItems(Opts)
         self.Cfg_Lst.currentItemChanged.connect(self.BRD_CFG_UPDATE)
 
@@ -1467,7 +1739,7 @@ class MainWindow(QMainWindow):
         self.Cfg_Plt = FCA(self.CfgFig)
         self.Cfg_Plt.setFixedSize(480, 300)
         self.CfgFig.subplots_adjust(
-            top=0.925, bottom=0.275, left=0.15, right=0.95)
+            top=0.925, bottom=0.2, left=0.125, right=0.95)
         self.CP = self.CfgFig.add_subplot(111)
 
 #-------Create Explain-Display-------#
@@ -1690,6 +1962,26 @@ class MainWindow(QMainWindow):
                                  "After triggering this Event the next Sequence ('Np'x'TxSeq') is started!")
             self.Cfg_New.setText(str(self.TCfg["ExtEve"]))
 
+        elif showMe == "RMin":
+            self.Cfg_Ttl.setText("shortest Distance accounted")
+            self.Cfg_Var.setText("Variable Name:\n"+showMe)
+            original =  str(self.StdCfg["RMin"])
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [m]")
+            self.Cfg_Conv.setText("Converter: Ready!")
+            self.Cfg_Exp.setText("This is the shortest Range taken into account for plotting! All Data in front of this "
+                                 "Point will not be taken into account plotting-wise!")
+            self.Cfg_New.setText(str(self.TCfg["RMin"]))
+
+        elif showMe == "RMax":
+            self.Cfg_Ttl.setText("longest Distance accounted")
+            self.Cfg_Var.setText("Variable Name:\n"+showMe)
+            original =  str(self.StdCfg["RMax"])
+            self.Cfg_Orig.setText("Original Value:\n"+original+" [m]")
+            self.Cfg_Conv.setText("Converter: Ready!")
+            self.Cfg_Exp.setText("This is the longest Range taken into account for plotting! All Data further of this "
+                                 "Point will not be taken into account plotting-wise!")
+            self.Cfg_New.setText(str(self.TCfg["RMax"]))
+
         else:
             self.errmsg("NameError!", "Item '" + showMe + "' not found!", "c")
             self.Cfg_Wndw.close()
@@ -1786,6 +2078,20 @@ class MainWindow(QMainWindow):
                     elif showMe == "ExtEve":
                         if float(value) == 0 or float(value) == 1:
                             self.TCfg["ExtEve"] = float(value)
+                        else:
+                            raise LookupError
+
+                elif showMe in ["RMax", "RMin"]:
+                    new_value = str(float(value) * 1e-3)
+                    self.Cfg_Conv.setText("Converted Value:\n"+new_value+" [km]")
+                    if showMe == "RMin":
+                        if float(value) >= 0 and float(value) < self.TCfg["RMax"]:
+                            self.TCfg["RMin"] = float(value)
+                        else:
+                            raise LookupError
+                    elif showMe == "RMax":
+                        if float(value) > self.TCfg["RMin"]:
+                            self.TCfg["RMax"] = float(value)
                         else:
                             raise LookupError
 
@@ -2101,6 +2407,9 @@ class MainWindow(QMainWindow):
                     tline[0] += ti
                     tline[1] += ti
                 self.CP.legend(frameon=True)
+
+            if showMe in ["RMax", "RMin"]:
+                self.CP.clear()
 
             self.Cfg_Plt.draw()
 
@@ -2688,7 +2997,7 @@ class MainWindow(QMainWindow):
                 if self.Dic["Tp"] and self.Dic["Np"]:
                     Tp = inp
                     Np = int(self.Cr_Np.text())
-                    TI = str(0.9e3 + Tp * Np * 4)
+                    TI = str(0.9e-3 + Tp * Np * 4)
                     self.Cr_TI.setPlaceholderText(
                         "min. calc. TI: " + TI + "[µs]")
                 if self.Dic["Tp"] and self.Dic["TU"] and self.Dic["CT"]:
@@ -3299,6 +3608,20 @@ class MainWindow(QMainWindow):
 
         self.Dic["RPNI"] = False
 
+#---Calculate TxPower a.k.a. Pt---#
+    def TxPwrCalc(self, Pwr):
+        if Pwr > 60:
+            Pwr = 60
+            print("maximum Power: 60%")
+        elif Pwr < 4:
+            Pwr = 4
+            print("minimum Power: 4%")
+        else:
+            print("Power set to: " + str(Pwr) + "%")
+
+        TxPwr = np.polyval(self.PP, Pwr)
+        return TxPwr
+
 #---ConfigCreator-function---#
     def CFG_CRTR(self):
         self.Dic = {"FS": None, "FSt": None, "TU": None, "TD": None, "TI": None,
@@ -3846,7 +4169,7 @@ class MainWindow(QMainWindow):
         mode = self.Cr_Mode.currentText()
 
         self.TxChn = self.Cr_TXC.value()
-        self.TxPwr = self.Cr_TXP.value()
+        self.TxPwr = self.TxPwrCalc(self.Cr_TXP.value())
 
         if self.Dic["FS"]:
             self.TCfg["fStrt"] = float(self.Cr_FS.text()) * 1e9
@@ -4196,7 +4519,7 @@ class MainWindow(QMainWindow):
 
 #-------create Combobox with Presets-------#
         self.PS_CB = QComboBox()
-        Presets = ["FMCW", "RangeDoppler", "RangeProfile"]
+        Presets = ["FMCW", "RangeDoppler", "RangeProfile", "FMCW-RP-Hybrid"]
         self.PS_CB.addItems(Presets)
 
 #-------create a load Button-------#
@@ -4293,6 +4616,29 @@ class MainWindow(QMainWindow):
             self.NormBox.setValue(-200)
             self.CheckNorm.setChecked(True)
 
+        elif choosen == "FMCW-RP-Hybrid":
+            self.BCfg = dict(self.StdCfg)
+            self.BCfg["fStrt"] = 76e9
+            self.BCfg["fStop"] = 77e9
+            self.BCfg["TRampUp"] = 20e-6
+            self.BCfg["TRampDo"] = 1e-6
+            self.BCfg["TInt"] = 0.05
+            self.BCfg["Tp"] = 80e-6
+            self.BCfg["N"] = 800
+            self.BCfg["Np"] = 12
+            self.BCfg["NrFrms"] = 1000
+
+            self.TCfg = dict(self.BCfg)
+
+            self.BFCfg = dict(self.SBCfg)
+            self.BFCfg["RangeFFT"] = 4096
+            self.BFCfg["AngFFT"] = 2048
+
+            self.TBCfg = dict(self.BFCfg)
+
+            self.NormBox.setValue(-200)
+            self.CheckNorm.setChecked(False)
+
         else:
             self.errmsg(
                 "NameError!", "No Presets found!\nPlease try again!", "c")
@@ -4311,8 +4657,8 @@ class MainWindow(QMainWindow):
         self.Bmf_Lst = QListWidget()
         self.Bmf_Lst.setFixedWidth(150)
 #-------Add all editable options-------#
-        Opts = ["RangeFFT", "AngFFT", "Abs", "Ext", "RMin", "RMax",
-                "ChnOrder", "NIni", "RemoveMean", "Window", "dB", "FuSca",
+        Opts = ["RangeFFT", "AngFFT", "Abs", "Ext", 
+                "ChnOrder", "NIni", "RemoveMean", "Window", "dB",
                 r"_-view all-_"]
         self.Bmf_Vars = Opts.copy()
         self.Bmf_Vars.append("all")
@@ -4354,7 +4700,7 @@ class MainWindow(QMainWindow):
         self.Bmf_Plt = FCA(self.BmfFig)
         self.Bmf_Plt.setFixedSize(480, 300)
         self.BmfFig.subplots_adjust(
-            top=0.95, bottom=0.15, left=0.15, right=0.90)
+            top=0.95, bottom=0.125, left=0.125, right=0.95)
         self.BP = self.BmfFig.add_subplot(111)
 
 #-------Create Explain-Display-------#
@@ -4558,7 +4904,7 @@ class MainWindow(QMainWindow):
 #-------check value and save&convert if possible-------#
         try:
             if float(value) >= 0:
-                if showMe in ["RMin", "RMax"]:
+                if showMe in [1, 2]:
                     new_value = str(float(value) * 1e-3)
                     self.Bmf_Conv.setText(
                         "Converted Value:\n"+new_value+" [km]")
@@ -4586,12 +4932,12 @@ class MainWindow(QMainWindow):
                             raise LookupError
                     elif showMe == "FuSca":
                         if float(value) > 0:
-                            self.TBCfg["Fusca"] = float(value)
+                            self.TBCfg["FuSca"] = float(value)
                         else:
                             raise LookupError
                     elif showMe == "NIni":
                         if float(value) >= 0:
-                            self.TBCfg["NIni"] = float(value)
+                            self.TBCfg["NIni"] = int(value)
                         else:
                             raise LookupError
 
@@ -4699,7 +5045,7 @@ class MainWindow(QMainWindow):
             W = int(self.TBCfg["Window"])
             dB = int(self.TBCfg["dB"])
             CO = self.TBCfg["ChnOrder"]
-            FS = self.TBCfg["FuSca"]
+            FS = .25/4096
             CalData = self.CD
 
             if showMe in ["RangeFFT", "AngFFT"]:
@@ -4747,7 +5093,7 @@ class MainWindow(QMainWindow):
                 data = self.Bcsv.copy()
                 if RemM:
                     mean = np.mean(data, axis=0)
-                    mdata = np.tile(mean, (502, 1))
+                    mdata = np.tile(mean, (503, 1))
                     data = data - mdata
                 im = self.BP.imshow(data, origin="lower", aspect="auto")
                 self.BP.set_ylabel("samples/rows of Data-Array")
@@ -4758,7 +5104,7 @@ class MainWindow(QMainWindow):
             if showMe == "Window":
                 data = self.Bcsv.copy()
                 if W:
-                    Win = np.hanning(502)
+                    Win = np.hanning(503)
                     Win2D = np.tile(Win, (32, 1))
                     Win2D = Win2D.transpose()
                     data = data*Win2D
@@ -4780,11 +5126,11 @@ class MainWindow(QMainWindow):
             if showMe in ["ChnOrder", "FuSca"]:
                 data = self.Bcsv.copy()
                 tray = np.zeros((R, 32))
-                P1 = int((R-502)/2)
-                tray[P1:P1+502,:] = data
+                P1 = int((R-503)/2)
+                tray[P1:P1+503,:] = data
                 tray = np.fft.fftshift(tray, axes=0)
                 tray = np.fft.fft(tray, R, 0)
-                tray = tray/502*FS
+                tray = tray/503*FS
                 tray = tray[0:int(R/2),:]
                 Chn = tray[:,CO]
                 Ny = Chn.shape[0]
@@ -4956,7 +5302,14 @@ class MainWindow(QMainWindow):
                     if self.BdB:
                         XChn = 20*np.log10(XChn)
 
-                self.BP.imshow(XChn, origin="lower", aspect="auto")
+                if self.cbar:
+                    self.bar.remove()
+                    self.cbar = False
+                im = self.BP.imshow(XChn, origin="lower", aspect="auto")
+                self.BP.set_ylabel("samples")
+                self.BP.set_xlabel("Channels")
+                self.bar = self.BmfFig.colorbar(im, ax=self.BP)
+                self.cbar = True
 
             self.Bmf_Plt.draw()
 
@@ -5015,8 +5368,8 @@ class MainWindow(QMainWindow):
         self.RD_Lst.setFixedWidth(150)
 
 #-------Add names to list-------#
-        Opts = ["RangeFFT", "VelFFT", "Abs", "Ext", "RMin", "RMax",
-                "RemoveMean", "Window", "dB", "FuSca", "NIni", "_-view all-_"]
+        Opts = ["RangeFFT", "VelFFT", "Abs", "Ext", 
+                "RemoveMean", "Window", "dB", "NIni", "_-view all-_"]
         self.RD_Vars = Opts.copy()
         self.RD_Vars.append("all")
         self.RD_Vars.append("clear")
@@ -5057,7 +5410,7 @@ class MainWindow(QMainWindow):
         self.RD_Plt = FCA(self.RDFig)
         self.RD_Plt.setFixedSize(480, 300)
         self.RDFig.subplots_adjust(
-            top=0.95, bottom=0.15, left=0.15, right=0.90)
+            top=0.95, bottom=0.125, left=0.125, right=0.95)
         self.DP = self.RDFig.add_subplot(111)
 
 #-------create a explain-display-------#
@@ -5424,7 +5777,7 @@ class MainWindow(QMainWindow):
             ReM = int(self.TRCfg["RemoveMean"])
             Win = int(self.TRCfg["Window"])
             dB = int(self.TRCfg["dB"])
-            FS = self.TRCfg["FuSca"]
+            FS = .25/4096
             NIni = int(self.TRCfg["NIni"])
             Np = int(self.TCfg["Np"])
             N = int(self.TCfg["N"])
@@ -5657,7 +6010,14 @@ class MainWindow(QMainWindow):
                     data = abs(data)
                     if self.RDdB:
                         data = 20*np.log10(data)
-                self.DP.imshow(data, origin="lower", aspect="auto")
+                if self.cbar:
+                    self.bar.remove()
+                    self.cbar=False
+                im = self.DP.imshow(data, origin="lower", aspect="auto")
+                self.DP.set_ylabel("samples")
+                self.DP.set_xlabel("chirps")
+                self.bar = self.RDFig.colorbar(im, ax=self.DP)
+                self.cbar=True
 
             self.RD_Plt.draw()
 
@@ -5717,8 +6077,8 @@ class MainWindow(QMainWindow):
         self.RP_Lst.setFixedWidth(150)
 
 #-------add names to listwidget-------#
-        Opts = ["NFFT", "Abs", "Ext", "RMin", "RMax",
-                "RemoveMean", "Window", "XPos", "dB", "FuSca", "NIni",
+        Opts = ["NFFT", "Abs", "Ext", 
+                "RemoveMean", "Window", "XPos", "dB", "NIni",
                 "_-view all-_"]
         self.RP_Lst.addItems(Opts)
         self.RP_Vars = Opts.copy()
@@ -5983,10 +6343,12 @@ class MainWindow(QMainWindow):
                         self.TPCfg["RemoveMean"] = float(value)
                     elif showMe == "Window":
                         self.TPCfg["Window"] = float(value)
-                    elif showMe == "Xpos":
+                    elif showMe == "XPos":
                         self.TPCfg["XPos"] = float(value)
                     elif showMe == "dB":
                         self.TPCfg["dB"] = float(value)
+                    else:
+                        raise LookupError
 
                 elif showMe == "NFFT":
                     if float(value) > 0:
@@ -6002,7 +6364,7 @@ class MainWindow(QMainWindow):
 
                 elif showMe == "NIni":
                     if int(value) in range(0, int(self.BCfg["N"])):
-                        self.TPCfg["NIni"] = float(value)
+                        self.TPCfg["NIni"] = int(value)
                     else:
                         raise LookupError
 
@@ -6034,7 +6396,7 @@ class MainWindow(QMainWindow):
             self.RP.clear()
 
             F = int(self.TPCfg["NFFT"])
-            FS = (self.TPCfg["FuSca"])
+            FS = .25/4096
             data = self.RPcsv
             Abs = int(self.TPCfg["Abs"])
             Ext = int(self.TPCfg["Ext"])
@@ -6061,6 +6423,8 @@ class MainWindow(QMainWindow):
                 data = abs(data)
                 data = np.mean(data, axis=1)
                 self.RP.plot(data, c="blue", label="FFT-Data")
+                self.RP.set_ylabel("Received Values")
+                self.RP.set_xlabel("samples")
                 # self.RP.plot(data1, c="cyan", label="Raw-Data")
 
             elif showMe == "Abs":
@@ -6069,6 +6433,8 @@ class MainWindow(QMainWindow):
                     data = abs(data)
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                self.RP.set_ylabel("Received Values")
+                self.RP.set_xlabel("samples")
 
             elif showMe in ["Ext", "RMin", "RMax"]:
                 data = np.array(data)
@@ -6081,8 +6447,11 @@ class MainWindow(QMainWindow):
                 data = np.fft.fft(data, F, 0)/Ny*FS
                 if Ext:
                     if self.connected:
-                        fsa = self.Board.Get("fs")
-                        kf = self.Board.RfGet("kf")
+                        try:
+                            fsa = self.Board.Get("fs")
+                            kf = self.Board.RfGet("kf")
+                        except ZeroDivisionError:
+                            kf = (self.TCfg["fStop"] - self.TCfg["fStrt"])/self.TCfg["TRampUp"]
                     else:
                         fsa = 1/(tU/N)
                         kf = (self.TCfg["fStop"] - self.TCfg["fStrt"])/self.TCfg["TRampUp"]
@@ -6094,8 +6463,11 @@ class MainWindow(QMainWindow):
                     Idmin = np.argmin(abs(Ra-RMi))
                     Idmax = np.argmin(abs(Ra-RMa))
                     data = data[Idmin:Idmax, :]
+                data = abs(data)
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                self.RP.set_ylabel("Received Values")
+                self.RP.set_xlabel("samples")
 
             elif showMe == "RemoveMean":
                 data = np.array(data)
@@ -6106,6 +6478,8 @@ class MainWindow(QMainWindow):
                     data = data-mean
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                self.RP.set_ylabel("Received Values")
+                self.RP.set_xlabel("samples")
 
             elif showMe == "Window":
                 data = np.array(data)
@@ -6118,6 +6492,8 @@ class MainWindow(QMainWindow):
                     data = data*Win2D
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                self.RP.set_ylabel("Received Values")
+                self.RP.set_xlabel("samples")
 
             elif showMe == "XPos":
                 data = np.array(data)
@@ -6130,8 +6506,11 @@ class MainWindow(QMainWindow):
                 data = np.fft.fft(data, F, 0)/Ny*FS
                 if XPs:
                     data = data[0:int(F/2), :]
+                data = abs(data)
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                self.RP.set_ylabel("Received Values")
+                self.RP.set_xlabel("samples")
 
             elif showMe == "dB":
                 data = np.array(data)
@@ -6140,12 +6519,16 @@ class MainWindow(QMainWindow):
                     data = 20*np.log10(data)
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                self.RP.set_ylabel("dBV")
+                self.RP.set_xlabel("samples")
 
             elif showMe == "NIni":
                 data = np.array(data)
                 data = data[NI:, :]
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                self.RP.set_ylabel("Received Values")
+                self.RP.set_xlabel("samples")
 
             if showMe == "_-view all-_":
                 toogle = str(value)
@@ -6252,6 +6635,12 @@ class MainWindow(QMainWindow):
                     data = data[Idmin:Idmax, :]
                 data = np.mean(data, axis=1)
                 self.RP.plot(data)
+                if self.RPAbs:
+                    if self.RPdB:
+                        self.RP.set_ylabel("dBV")
+                else:
+                    self.RP.set_ylabel("Received Value")
+                self.RP.set_xlabel("samples")
 
             self.RP_Plt.draw()
 
@@ -6456,9 +6845,12 @@ class MainWindow(QMainWindow):
             DF.to_csv(datasave, sep=";", decimal=",")
 #-----------create video-----------#
             images = []
-            for image in glob.glob("vc/*.png"):
-                images.append(imageio.imread(image))
-            imageio.mimsave(vidsave, images)
+            try:
+                for image in glob.glob("vc/*.png"):
+                    images.append(imageio.imread(image))
+                imageio.mimsave(vidsave, images)
+            except:
+                self.errmsg("ImageError!", "Could not create gif/.mp4!", "w")
 #-----------create saveconfig-----------#
             to_save = {"Board": self.BCfg,
                        "Beam": self.BFCfg,
@@ -6471,7 +6863,7 @@ class MainWindow(QMainWindow):
             elif self.RP:
                 to_save["Mode"] = "RP"
             else:
-                to_save["Mode"] = "?"
+                to_save["Mode"] = "RCS"
 
             if self.CheckNorm.isChecked():
                 to_save["Norm"] = 1
@@ -6955,7 +7347,5 @@ class LockWindow(QWidget):
 # start QApplication if __name__=="__main__" #
 if __name__ == "__main__":
     Wndw = MainWindow()
-    Wndw.show()
-    sys.exit(app.exec_())
     Wndw.show()
     sys.exit(app.exec_())

@@ -221,7 +221,7 @@ class Radarbook(Connection.Connection):
         elif stVal  == 'CicDi':
             self.Rad_CicCfg_SampRed      =       1
             self.Rad_CicCfg_RegCtrl      =       self.cCIC1_REG_CONTROL_BYPASS + self.cCIC1_REG_CONTROL_EN
-            self.ConSetConfig(stVal, 'true', 'STRING');
+            self.ConSetConfig(stVal, 'false', 'STRING');
         elif stVal  == 'CicEna':
             self.Rad_CicCfg_SampRed      =       1
             self.Rad_CicCfg_RegCtrl      =       self.cCIC1_REG_CONTROL_EN + self.cCIC1_REG_CONTROL_RSTCNTREOP  + self.cCIC1_REG_CONTROL_RSTFILTEOP
@@ -1973,7 +1973,7 @@ class Radarbook(Connection.Connection):
         #   @brief          Get Calibration Cfg
         N           =   dCfg["Len"]
         StrtIdx     =   1
-        Data        =   np.zeros(N, dtype='int32')
+        Data        =   np.zeros(int(N), dtype='int32')
         while(StrtIdx < N):
             if (StrtIdx + 24) < N:
                 Len         =   24
@@ -1987,7 +1987,7 @@ class Radarbook(Connection.Connection):
             FpgaCmd[3]      =   Len
             Ret             =   self.CmdSend(0, Cod, FpgaCmd)
             Ret             =   self.CmdRecv()
-            Data[StrtIdx-1:StrtIdx+Len-1]       =   Ret
+            Data[StrtIdx-1:StrtIdx+int(Len)-1]       =   Ret
             StrtIdx         =   StrtIdx + Len
 
         return Data
@@ -2413,7 +2413,7 @@ class Radarbook(Connection.Connection):
         if len(varargin) > 0:
             dAdcCfg     =   varargin[0]
             if 'ChCtrl' in dAdcCfg:
-                if dAdcCfg.ChCtrl == self.cAD8283_REG_MUXCNTRL_AB:
+                if dAdcCfg["ChCtrl"] == self.cAD8283_REG_MUXCNTRL_AB:
                     Nr  =   2
                 elif dAdcCfg["ChCtrl"] == self.cAD8283_REG_MUXCNTRL_ABC:
                     Nr  =   3

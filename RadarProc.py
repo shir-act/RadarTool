@@ -16,7 +16,7 @@ class RadarProc(object):
 
     def __init__(self):
         pass
-        self.c0                         =   3e8
+        self.c0                         =   2.99792458e8
         self.fs                         =   -1
         self.kf                         =   -1
         self.FuSca                      =   2/2048
@@ -165,7 +165,7 @@ class RadarProc(object):
             Win2D   =   Win2D.transpose()
         else:
             ScaWin  =   Ny
-            Win2D   =   np.ones(Ny, Nx)
+            Win2D   =   np.ones((Ny, Nx))
 
         Data        =   Data*Win2D
         if len(varargin) > 0:
@@ -193,7 +193,7 @@ class RadarProc(object):
         X   =   self.RangeProfileFFT(Data, 'Cfar')
 
         if self.RangeProfile_XPos > 0:
-            X       =   X[0:self.RangeProfile_FFT/2,:]
+            X       =   X[0:int(self.RangeProfile_FFT/2),:]
 
         if self.RangeProfile_Abs > 0:
             X       =   abs(X)
@@ -506,7 +506,7 @@ class RadarProc(object):
         #           dB:             Spectrum in dB
         #           FuSca:          Data Scaling constant
 
-        Data    =   Data[self.BeamformingUla_NIni:,:]
+        Data    =   Data[self.BeamformingUla_NIni:, :]
         Siz     =   Data.shape
         Ny      =   Siz[0]                          # rows
         Nx      =   Siz[1]                          # colums
@@ -736,7 +736,7 @@ class RadarProc(object):
             self.BeamformingUla_ChnOrder        =   dCfg["ChnOrder"]
 
         # Update requried parameters
-        Freq    =  np. arange(int(self.BeamformingUla_RangeFFT/2))/self.BeamformingUla_RangeFFT * self.fs
+        Freq    =  np.arange(int(self.BeamformingUla_RangeFFT/2))/self.BeamformingUla_RangeFFT * self.fs
 
         if self.BeamformingUla_Ext > 0:
             Range       =   Freq*self.c0/(2*self.kf)
@@ -765,3 +765,283 @@ class RadarProc(object):
         if stSel == 'AngFreqNorm':
             Freq            =   (np.arange(int(self.BeamformingUla_AngFFT)) - self.BeamformingUla_AngFFT/2)/self.BeamformingUla_AngFFT
             return Freq
+
+    def RCSRP(self, D, Dmode="full"):
+        if Dmode == "full":
+            D = D[1:,:]
+            Ny, Nx = D.shape
+    
+            # Remove mean
+            Tmp = np.mean(D, axis=0)
+            Tmp = np.tile(Tmp, (Ny, 1))
+            D = D-Tmp
+    
+            # hanning window cost function
+            Win = np.hanning(Ny)
+            ScaWin = sum(Win)
+            Win2D = np.tile(Win, (Nx, 1))
+            Win2D = Win2D.transpose()
+
+            D = D*Win2D
+    
+            # print("RCS_FuSca: "+str(self.RCS_FuSca))
+            D = np.fft.fft(D, self.RCS_RFFT, 0)/ScaWin*self.RCS_FuSca
+            dBV = abs(D)
+            D = abs(D)
+
+            # get range/freq/ext index
+            Freq = np.arange(int(self.RCS_RFFT/2))/self.RCS_RFFT*self.RCS_fs
+            Dist = self.c0*Freq/(2*self.RCS_kf)
+            idmin = np.argmin(abs(Dist-self.RCS_RMin))
+            idmax = np.argmin(abs(Dist-self.RCS_RMax))
+            Freq = Freq[idmin:idmax]
+            Dist = self.c0*Freq/(2*self.RCS_kf)
+            D = D[idmin:idmax,:]
+            dBV = dBV[idmin:idmax,:]
+            dBV = np.mean(dBV, axis=1)
+
+        elif Dmode == "dBV":
+            D = (10**(D/20))
+            dBV = D
+            Freq = self.GetRangeProfile("Freq")
+            Dist = self.GetRangeProfile("Range")
+            Ny, Nx = D.shape
+
+        elif Dmode == "None":
+            dBV = abs(D)
+            Freq = self.GetRangeProfile("Freq")
+            Dist = self.GetRangeProfile("Range")
+            if len(D.shape) > 1:
+                Ny, Nx = D.shape
+            else:
+                Nx = 1
+
+        # define rcs calc. variables
+        GTx = 10**(13/10)
+        GRx = 10**(11/10)
+        GCc = 10**(17/10)
+        C1  = 1e-7
+        R1  = 5e3
+        l   = self.c0/self.RCS_fc
+        pi = np.pi
+
+        # calc TxPwr as dBm and W
+        TxdBm = np.polyval([-0.000007136913372, 0.001293223792425,
+                            -0.086184394495573, 2.521879013288421,
+                            -20.615765519181373], self.RCS_TxPwr)
+        TxW = 10**(TxdBm/10) * 1e-3
+
+        # calc highpass
+        CutHigh = 1/(2*pi*C1*R1)
+
+        Hpass = (Freq/CutHigh)/(1+Freq/CutHigh)
+
+        if Nx > 1:
+            High = np.tile(Hpass, (Nx, 1)).transpose()
+            Rang = np.tile(Dist, (Nx, 1)).transpose()
+        else:
+            High = Hpass
+            Rang = Dist
+
+        Uin = abs(D)/abs(High)
+        Pin = Uin**2/100
+        Pr  = Pin/GCc
+        
+        rcs = ((4*pi*Rang**4)/TxW) * ((4*pi)/GTx) * ((4*pi)/GRx) *(Pr/(l**2))
+
+        V0, sm0, loc, drop = self.RCS2dBV(self.RCS_RefRCS, self.RCS_RefDist)
+
+        dBV = 20*np.log10(dBV)
+        dBsm = 10*np.log10(rcs)
+        
+        return dBsm, dBV, Dist
+
+    def RCSBeamformingUla(self, Data):
+        Data = Data[1:,:]
+        Ny, Nx = Data.shape
+        CalData = self.RCS_CalData[:Nx]
+
+        # Remove mean
+        Tmp = np.mean(Data, axis=0)
+        Tmp = np.tile(Tmp, (Ny, 1))
+        Data = Data-Tmp
+
+        # hanning window cost function
+        Win = np.hanning(Ny)
+        ScaWin = sum(Win)
+        Win2D = np.tile(Win, (Nx, 1)).transpose()
+
+        Data = Data*Win2D
+
+        x = np.fft.fftshift(Data, axes=0)
+        Data = np.fft.fft(x, self.RCS_RFFT, 0)/ScaWin*self.RCS_FuSca
+
+        Freq = self.RCS_Freq[self.RCS_Idmin:self.RCS_Idmax]
+        Dist = self.RCS_Dist[self.RCS_Idmin:self.RCS_Idmax]
+        Degs = self.RCS_Degs.copy()
+        Data = Data[self.RCS_Idmin:self.RCS_Idmax]
+
+        Ny, Nx = Data.shape
+
+        Win = np.hanning(Nx)
+        ScaWin = sum(Win)
+        Win = Win*CalData
+        Win2D = np.tile(Win, (Ny, 1))
+        Data = Data*Win2D
+
+        Data = np.fft.fft(Data, self.RCS_AFFT, 1)/ScaWin
+        Data = np.fft.fftshift(Data, axes=1)
+        data = abs(Data)
+        dBV = 20*np.log10(data)
+
+        Ny, Nx = Data.shape
+
+        GTx = 10**(13/10)
+        GRx = 10**(11/10)
+        GCc = 10**(17/10)
+        C1  = 1e-7
+        R1  = 5e3
+        l   = self.c0/self.RCS_fc
+        pi = np.pi
+
+        # calc TxPwr as dBm and W
+        TxdBm = np.polyval([-0.000007136913372, 0.001293223792425,
+                            -0.086184394495573, 2.521879013288421,
+                            -20.615765519181373], self.RCS_TxPwr)
+        TxW = 10**(TxdBm/10) * 1e-3
+
+        # calc highpass
+        CutHigh = 1/(2*pi*C1*R1)
+
+        Hpass = Freq/CutHigh/(1+Freq/CutHigh)
+
+        High = np.tile(Hpass, (Nx, 1)).transpose()
+        Rang = np.tile(Dist, (Nx, 1)).transpose()
+
+        Uin = abs(Data)/abs(High)
+        Pin = Uin**2/100
+        Pr  = Pin/GCc
+
+        rcs = ((4*pi*Rang**4)/TxW) * ((4*pi)/GTx) * ((4*pi)/GRx) * (Pr/l**2)
+
+        dBsm = 10*np.log10(rcs)+3
+
+        return dBsm, dBV, Dist, Degs
+    
+
+    def RCSCfg(self, Dict):
+        if not isinstance(Dict, dict):
+            return TypeError
+        try:
+            if "NFFT" in Dict:
+                self.RCS_RFFT = Dict["NFFT"]
+            else:
+                self.RCS_RFFT = 4096
+            if "AFFT" in Dict:
+                self.RCS_AFFT = Dict["AFFT"]
+            else:
+                self.RCS_AFFT = 256
+            if "fs" in Dict:
+                self.RCS_fs = Dict["fs"]
+            else:
+                self.RCS_fs = -1
+            if "kf" in Dict:
+                self.RCS_kf = Dict["kf"]
+            else:
+                self.RCS_kf = -1
+            if "RMin" in Dict:
+                self.RCS_RMin = Dict["RMin"]
+            else:
+                self.RCS_RMin = 0
+            if "RMax" in Dict:
+                self.RCS_RMax = Dict["RMax"]
+            else:
+                self.RCS_RMax = 100
+            if "fc" in Dict:
+                self.RCS_fc = Dict["fc"]
+            else:
+                self.RCS_fc = -1
+            if "TxPwr" in Dict:
+                self.RCS_TxPwr = Dict["TxPwr"]
+            else:
+                self.RCS_TxPwr = -1
+            if "FuSca" in Dict:
+                self.RCS_FuSca = Dict["FuSca"]
+            else:
+                self.RCS_FuSca = 0.25/4096
+            if "CalData" in Dict:
+                self.RCS_CalData = Dict["CalData"]
+                self.RCS_RefDist = self.RCS_CalData[33].imag
+                self.RCS_RefRCS  = self.RCS_CalData[33].real
+            else:
+                self.RCS_CalData = -1
+                
+            self.RCS_Freq = np.arange(int(self.RCS_RFFT/2))/self.RCS_RFFT*self.RCS_fs
+            self.RCS_Degs = np.rad2deg((np.arange(self.RCS_AFFT) - self.RCS_AFFT/2)/self.RCS_AFFT)
+            self.RCS_Dist = self.RCS_Freq*self.c0/(2*self.RCS_kf)
+        
+            self.RCS_Idmax = np.argmin(abs(self.RCS_Dist-self.RCS_RMax))
+            self.RCS_Idmin = np.argmin(abs(self.RCS_Dist-self.RCS_RMin))
+
+        except:
+            print("missing Variables!")
+            return
+
+    def RCSCornerCube(self, aCornerCube, DistCoCuRadar):
+        TxdBm = np.polyval([-0.000007136913372, 0.001293223792425,
+                            -0.086184394495573, 2.521879013288421,
+                            -20.615765519181373], self.RCS_TxPwr)
+        TxW = 10**(TxdBm/10) * 1e-3
+        
+        GTx = 10**(13/10)
+        GRx = 10**(11/10)
+        GCc = 10**(17/10)
+        l = self.c0/self.RCS_fc
+        pi = np.pi
+        log = np.log10
+
+        RCS = 4*pi*aCornerCube**4/(3*l**2)
+        
+        Pr = TxW/(4*pi*DistCoCuRadar**4)*GTx/(4*pi)*GRx/(4*pi)*RCS*l**2
+        PrdBm = 10*log(Pr*1e3)
+        PifdBm = PrdBm+10*log(GCc)
+        Pif = 10**(PifdBm/10)*1e-3
+        Uif = np.sqrt(Pif*50)*np.sqrt(2)
+        dBV = 20*log(Uif)
+        
+        return RCS, dBV
+
+    def RCS2dBV(self, RCS, Range):
+        TxdBm = np.polyval([-0.000007136913372, 0.001293223792425,
+                            -0.086184394495573, 2.521879013288421,
+                            -20.615765519181373], self.RCS_TxPwr)
+        TxW = 10**(TxdBm/10) * 1e-3
+        
+        GTx = 10**(13/10)
+        GRx = 10**(11/10)
+        GCc = 10**(17/10)
+        l = self.c0/self.RCS_fc
+        pi = np.pi
+        log = np.log10
+        
+        Pr   = TxW/(4*pi*Range**4)*(GTx/(4*pi))*(GRx/(4*pi))*RCS*l**2
+        drop = TxW/(4*pi*self.RCS_Dist**4)*(GTx/(4*pi))*(GRx/(4*pi))*RCS*l**2
+        PrdBm = 10*log(Pr*1e3)
+        drop = 10*log(drop*1e3)
+        PifdBm = PrdBm+10*log(GCc)
+        drop = drop+10*log(GCc)
+        Pif = 10**(PifdBm/10)*1e-3
+        drop = 10**(drop/10)*1e-3
+        Uif = np.sqrt(Pif*50)*np.sqrt(2)
+        drop = np.sqrt(drop*50)*np.sqrt(2)
+        dBV = 20*log(Uif)
+        drop = 20*log(drop)
+        dBsm = 10*log(RCS)
+
+        loc = np.argmin(abs(self.RCS_Dist-Range))
+
+        V = 10**(dBV/20)
+        sm = 10**(dBsm/10)
+        drop = 10**(drop/20)
+
+        return V, sm, loc, drop
